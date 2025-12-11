@@ -65,19 +65,29 @@ const Footer = () => {
             <h4 className="font-serif text-lg font-semibold mb-4">Destinations</h4>
             <ul className="space-y-3">
               <li>
-                <span className="text-sm opacity-80">Malvan & Tarkarli</span>
+                <Link to="/trips/malvan-bhraman-001" className="text-sm opacity-80 hover:opacity-100 hover:text-primary transition-colors">
+                  Malvan & Tarkarli
+                </Link>
               </li>
               <li>
-                <span className="text-sm opacity-80">Sindhudurg Fort</span>
+                <Link to="/trips/sindhudurg-tarkarli-004" className="text-sm opacity-80 hover:opacity-100 hover:text-primary transition-colors">
+                  Sindhudurg Fort
+                </Link>
               </li>
               <li>
-                <span className="text-sm opacity-80">Ratnagiri & Ganpatipule</span>
+                <Link to="/trips/ratnagiri-beaches-003" className="text-sm opacity-80 hover:opacity-100 hover:text-primary transition-colors">
+                  Ratnagiri & Ganpatipule
+                </Link>
               </li>
               <li>
-                <span className="text-sm opacity-80">Alibaug & Murud</span>
+                <Link to="/trips/konkan-weekend-alibaug-002" className="text-sm opacity-80 hover:opacity-100 hover:text-primary transition-colors">
+                  Alibaug & Murud
+                </Link>
               </li>
               <li>
-                <span className="text-sm opacity-80">Guhagar & Devgad</span>
+                <Link to="/trips/guhagar-devgad-006" className="text-sm opacity-80 hover:opacity-100 hover:text-primary transition-colors">
+                  Guhagar & Devgad
+                </Link>
               </li>
             </ul>
           </div>
