@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, User, Mail, Phone, Users, Calendar, CreditCard, CheckCircle, Upload, Image } from "lucide-react";
+import paymentQr from "@/assets/payment-qr.jpg";
 import { Trip, getTripPrice, formatPrice } from "@/data/trips";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -366,9 +367,14 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                         <CreditCard className="w-4 h-4 text-primary" />
                         Pay via UPI
                       </h4>
-                      <div className="space-y-2 text-sm">
+                      <div className="flex flex-col items-center text-center mb-4">
+                        <img 
+                          src={paymentQr} 
+                          alt="Payment QR Code" 
+                          className="w-48 h-48 rounded-lg mb-3"
+                        />
                         <p className="font-mono text-lg text-primary font-bold">{trip.booking.upi}</p>
-                        <p className="text-muted-foreground">
+                        <p className="text-sm text-muted-foreground">
                           Send ₹{(advanceAmount * parseInt(formData.travelers)).toLocaleString()} as advance payment
                         </p>
                       </div>
