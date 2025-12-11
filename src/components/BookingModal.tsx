@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { X, User, Mail, Phone, Users, Calendar, CreditCard, CheckCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { X, User, Mail, Phone, Users, Calendar, CreditCard, CheckCircle, Upload, Image } from "lucide-react";
 import { Trip, getTripPrice, formatPrice } from "@/data/trips";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 interface BookingModalProps {
   trip: Trip;
@@ -14,8 +17,13 @@ interface BookingModalProps {
 }
 
 const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
+  const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -23,6 +31,7 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
     travelers: "1",
     pickupPoint: "mumbai",
     date: "",
+    upiTransactionId: "",
   });
 
   if (!isOpen) return null;
@@ -35,17 +44,113 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
   const totalPrice = selectedPrice * parseInt(formData.travelers);
   const advanceAmount = trip.booking?.advance || 2000;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      setScreenshotFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setScreenshotPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadScreenshot = async (): Promise<string | null> => {
+    if (!screenshotFile || !user) return null;
+
+    const fileExt = screenshotFile.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('payment-screenshots')
+      .upload(fileName, screenshotFile);
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      return null;
+    }
+
+    const { data } = supabase.storage
+      .from('payment-screenshots')
+      .getPublicUrl(fileName);
+
+    return data.publicUrl;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (step === 1) {
+      if (!user) {
+        toast({
+          title: "Login Required",
+          description: "Please login to book this trip.",
+          variant: "destructive",
+        });
+        navigate("/auth");
+        return;
+      }
       setStep(2);
-    } else {
-      // Here you would integrate with payment gateway
-      toast({
-        title: "Booking Request Submitted!",
-        description: "We'll contact you shortly with payment details.",
-      });
+    } else if (step === 2) {
       setStep(3);
+    } else {
+      // Step 3: Submit booking with screenshot
+      if (!screenshotFile) {
+        toast({
+          title: "Screenshot Required",
+          description: "Please upload your payment screenshot",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const screenshotUrl = await uploadScreenshot();
+
+        const { error } = await supabase.from("bookings").insert({
+          user_id: user!.id,
+          trip_id: trip.tripId,
+          trip_name: trip.tripName,
+          full_name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          pickup_location: formData.pickupPoint,
+          num_travelers: parseInt(formData.travelers),
+          travel_date: formData.date || null,
+          amount: totalPrice,
+          upi_transaction_id: formData.upiTransactionId || null,
+          payment_screenshot_url: screenshotUrl,
+          status: "pending",
+        });
+
+        if (error) throw error;
+
+        toast({
+          title: "Booking Submitted!",
+          description: "We'll verify your payment and confirm your booking shortly.",
+        });
+        setStep(4);
+      } catch (error) {
+        console.error('Booking error:', error);
+        toast({
+          title: "Booking Failed",
+          description: "Something went wrong. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -58,7 +163,10 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
       travelers: "1",
       pickupPoint: "mumbai",
       date: "",
+      upiTransactionId: "",
     });
+    setScreenshotFile(null);
+    setScreenshotPreview(null);
     onClose();
   };
 
@@ -71,7 +179,7 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
       />
       
       {/* Modal */}
-      <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-xl overflow-hidden animate-scale-in">
+      <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-xl overflow-hidden animate-scale-in max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="relative px-6 py-4 border-b border-border">
           <button
@@ -81,23 +189,37 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
             <X className="w-5 h-5 text-muted-foreground" />
           </button>
           <h2 className="font-serif text-xl font-bold text-card-foreground pr-8">
-            {step === 3 ? "Booking Confirmed!" : `Book: ${trip.tripName}`}
+            {step === 4 ? "Booking Submitted!" : `Book: ${trip.tripName}`}
           </h2>
           <p className="text-sm text-muted-foreground">{trip.duration} • {formatPrice(selectedPrice)}/person</p>
+          
+          {/* Progress Steps */}
+          {step < 4 && (
+            <div className="flex gap-2 mt-4">
+              {[1, 2, 3].map((s) => (
+                <div
+                  key={s}
+                  className={`flex-1 h-1 rounded-full transition-colors ${
+                    s <= step ? "bg-primary" : "bg-muted"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Content */}
         <div className="p-6">
-          {step === 3 ? (
+          {step === 4 ? (
             <div className="text-center py-8">
-              <div className="w-20 h-20 rounded-full bg-forest/20 flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="w-10 h-10 text-forest" />
+              <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-6">
+                <CheckCircle className="w-10 h-10 text-primary" />
               </div>
               <h3 className="font-serif text-2xl font-bold text-card-foreground mb-2">
                 Thank You, {formData.name}!
               </h3>
               <p className="text-muted-foreground mb-6">
-                Your booking request has been received. We'll send payment details to {formData.email} shortly.
+                Your booking has been submitted. We'll verify your payment and send a confirmation to {formData.email}.
               </p>
               <div className="bg-muted rounded-lg p-4 text-left mb-6">
                 <p className="text-sm font-medium text-card-foreground mb-2">Booking Summary</p>
@@ -106,17 +228,22 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                   <p>Travelers: {formData.travelers}</p>
                   <p>Pickup: {formData.pickupPoint === 'pune' ? 'Pune' : 'Mumbai'}</p>
                   <p className="font-medium text-card-foreground">
-                    Total: {formatPrice(totalPrice)} (Advance: {formatPrice(advanceAmount * parseInt(formData.travelers))})
+                    Total: {formatPrice(totalPrice)}
                   </p>
                 </div>
               </div>
-              <Button onClick={handleClose} className="w-full">
-                Done
-              </Button>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={handleClose} className="flex-1">
+                  Close
+                </Button>
+                <Button onClick={() => navigate("/my-bookings")} className="flex-1">
+                  View My Bookings
+                </Button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              {step === 1 ? (
+              {step === 1 && (
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="name" className="flex items-center gap-2 mb-2">
@@ -207,7 +334,9 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                     )}
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {step === 2 && (
                 <div className="space-y-4">
                   <div className="bg-muted rounded-lg p-4">
                     <h4 className="font-medium text-card-foreground mb-3">Payment Summary</h4>
@@ -232,40 +361,125 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                   </div>
 
                   {trip.booking && (
-                    <div className="bg-secondary/50 rounded-lg p-4">
+                    <div className="bg-primary/10 rounded-lg p-4 border border-primary/20">
                       <h4 className="font-medium text-card-foreground mb-3 flex items-center gap-2">
                         <CreditCard className="w-4 h-4 text-primary" />
-                        Payment Options
+                        Pay via UPI
                       </h4>
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        <p><strong>UPI:</strong> {trip.booking.upi}</p>
-                        {trip.booking.bank && (
-                          <>
-                            <p><strong>Bank:</strong> {trip.booking.bank.name}</p>
+                      <div className="space-y-2 text-sm">
+                        <p className="font-mono text-lg text-primary font-bold">{trip.booking.upi}</p>
+                        <p className="text-muted-foreground">
+                          Send ₹{(advanceAmount * parseInt(formData.travelers)).toLocaleString()} as advance payment
+                        </p>
+                      </div>
+                      {trip.booking.bank && (
+                        <div className="mt-4 pt-4 border-t border-border">
+                          <p className="text-xs text-muted-foreground mb-2">Or pay via Bank Transfer:</p>
+                          <div className="space-y-1 text-xs text-muted-foreground">
+                            <p><strong>Name:</strong> {trip.booking.bank.name}</p>
                             <p><strong>A/C:</strong> {trip.booking.bank.accountNumber}</p>
                             <p><strong>IFSC:</strong> {trip.booking.bank.ifsc}</p>
-                          </>
-                        )}
-                      </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
+
+                  <div className="bg-accent/10 rounded-lg p-4 border border-accent/20">
+                    <p className="text-sm text-accent-foreground">
+                      <strong>Next Step:</strong> After making the payment, you'll upload the payment screenshot to confirm your booking.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {step === 3 && (
+                <div className="space-y-4">
+                  <div className="bg-muted rounded-lg p-4">
+                    <h4 className="font-medium text-card-foreground mb-2">Upload Payment Proof</h4>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Please upload a screenshot of your UPI payment to confirm your booking.
+                    </p>
+                    
+                    <div>
+                      <Label htmlFor="upiId" className="mb-2 block text-sm">
+                        UPI Transaction ID (Optional)
+                      </Label>
+                      <Input
+                        id="upiId"
+                        value={formData.upiTransactionId}
+                        onChange={(e) => setFormData({ ...formData, upiTransactionId: e.target.value })}
+                        placeholder="Enter transaction ID"
+                        className="mb-4"
+                      />
+                    </div>
+
+                    <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+                      {screenshotPreview ? (
+                        <div className="space-y-3">
+                          <img
+                            src={screenshotPreview}
+                            alt="Payment Screenshot"
+                            className="max-h-48 mx-auto rounded-lg"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setScreenshotFile(null);
+                              setScreenshotPreview(null);
+                            }}
+                          >
+                            Remove & Upload New
+                          </Button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer block">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="hidden"
+                          />
+                          <div className="space-y-2">
+                            <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
+                              <Upload className="w-6 h-6 text-primary" />
+                            </div>
+                            <p className="text-sm font-medium text-card-foreground">
+                              Click to upload screenshot
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              PNG, JPG up to 5MB
+                            </p>
+                          </div>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-yellow-500/10 rounded-lg p-4 border border-yellow-500/20">
+                    <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                      <strong>Note:</strong> Your booking will be confirmed after we verify your payment. This usually takes 2-4 hours during business hours.
+                    </p>
+                  </div>
                 </div>
               )}
 
               {/* Footer */}
               <div className="flex gap-3 mt-6">
-                {step === 2 && (
+                {step > 1 && step < 4 && (
                   <Button
                     type="button"
                     variant="outline"
                     className="flex-1"
-                    onClick={() => setStep(1)}
+                    onClick={() => setStep(step - 1)}
                   >
                     Back
                   </Button>
                 )}
-                <Button type="submit" className="flex-1">
-                  {step === 1 ? "Continue to Payment" : "Confirm Booking"}
+                <Button type="submit" className="flex-1" disabled={loading}>
+                  {loading ? "Submitting..." : step === 1 ? "Continue" : step === 2 ? "I've Made the Payment" : "Submit Booking"}
                 </Button>
               </div>
             </form>
