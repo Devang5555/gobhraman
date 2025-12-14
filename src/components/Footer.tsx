@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { Compass, Mail, Phone, MapPin, Instagram, Facebook, Twitter } from "lucide-react";
+import { Mail, Phone, MapPin, Instagram, Facebook, Twitter } from "lucide-react";
+import logo from "@/assets/logo.jpg";
 
 const Footer = () => {
   return (
@@ -9,9 +10,11 @@ const Footer = () => {
           {/* Brand */}
           <div className="lg:col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-                <Compass className="w-5 h-5 text-primary-foreground" />
-              </div>
+              <img 
+                src={logo} 
+                alt="GoBhraman Logo" 
+                className="w-12 h-12 object-contain rounded-lg bg-background p-1"
+              />
               <div className="flex flex-col">
                 <span className="font-serif text-xl font-bold">GoBhraman</span>
                 <span className="text-[10px] opacity-70 -mt-1 tracking-wider">KONKAN EDITION</span>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Calendar, MapPin, Users, Clock, CheckCircle, XCircle, ArrowRight } from "lucide-react";
+import { Calendar, MapPin, Users, Clock, CheckCircle, XCircle, ArrowRight, CreditCard, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -20,6 +20,8 @@ interface Booking {
   status: string;
   created_at: string;
 }
+
+const ADVANCE_AMOUNT = 2000;
 
 const MyBookings = () => {
   const navigate = useNavigate();
@@ -85,6 +87,17 @@ const MyBookings = () => {
     }
   };
 
+  const getPaymentStatus = (booking: Booking) => {
+    const advancePaid = ADVANCE_AMOUNT * booking.num_travelers;
+    const balanceAmount = booking.amount - advancePaid;
+    
+    // If booking is confirmed and balance is 0, it's fully paid
+    if (booking.status === "confirmed" && balanceAmount <= 0) {
+      return "Completed";
+    }
+    return "Partial";
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-IN", {
       day: "numeric",
@@ -132,56 +145,100 @@ const MyBookings = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              {bookings.map((booking) => (
-                <div
-                  key={booking.id}
-                  className="bg-card border border-border rounded-xl p-6 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-serif text-lg font-bold text-foreground">
-                          {booking.trip_name}
-                        </h3>
-                        {getStatusBadge(booking.status)}
+              {bookings.map((booking) => {
+                const advancePaid = ADVANCE_AMOUNT * booking.num_travelers;
+                const balanceAmount = Math.max(0, booking.amount - advancePaid);
+                const paymentStatus = getPaymentStatus(booking);
+                
+                return (
+                  <div
+                    key={booking.id}
+                    className="bg-card border border-border rounded-xl p-6 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex flex-col gap-4">
+                      {/* Header */}
+                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between mb-2">
+                            <h3 className="font-serif text-lg font-bold text-foreground">
+                              {booking.trip_name}
+                            </h3>
+                            {getStatusBadge(booking.status)}
+                          </div>
+                          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-4 h-4" />
+                              {booking.pickup_location}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Users className="w-4 h-4" />
+                              {booking.num_travelers} traveler(s)
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-4 h-4" />
+                              Booked on {formatDate(booking.created_at)}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-4 h-4" />
-                          {booking.pickup_location}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users className="w-4 h-4" />
-                          {booking.num_travelers} traveler(s)
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          Booked on {formatDate(booking.created_at)}
-                        </span>
+
+                      {/* Payment Details */}
+                      <div className="bg-muted/50 rounded-lg p-4 mt-2">
+                        <h4 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+                          <CreditCard className="w-4 h-4 text-primary" />
+                          Payment Details
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Total Trip Price</p>
+                            <p className="font-bold text-foreground">₹{booking.amount.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Advance Paid</p>
+                            <p className="font-bold text-green-600">₹{advancePaid.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Remaining Balance</p>
+                            <p className={`font-bold ${balanceAmount > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+                              ₹{balanceAmount.toLocaleString()}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Payment Status</p>
+                            <Badge 
+                              className={paymentStatus === "Completed" 
+                                ? "bg-green-500/20 text-green-600 border-green-500/30" 
+                                : "bg-amber-500/20 text-amber-600 border-amber-500/30"}
+                            >
+                              <Wallet className="w-3 h-3 mr-1" />
+                              {paymentStatus}
+                            </Badge>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-primary">
-                        ₹{booking.amount.toLocaleString()}
-                      </p>
-                      <Link
-                        to={`/trips/${booking.trip_id}`}
-                        className="text-sm text-accent hover:underline"
-                      >
-                        View Trip Details →
-                      </Link>
+
+                      {/* Actions */}
+                      <div className="flex justify-end">
+                        <Link
+                          to={`/trips/${booking.trip_id}`}
+                          className="text-sm text-primary hover:underline flex items-center gap-1"
+                        >
+                          View Trip Details
+                          <ArrowRight className="w-3 h-3" />
+                        </Link>
+                      </div>
+                      
+                      {booking.status === "pending" && (
+                        <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                          <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                            Your payment is being verified. We'll confirm your booking shortly.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  
-                  {booking.status === "pending" && (
-                    <div className="mt-4 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                      <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                        Your payment is being verified. We'll confirm your booking shortly.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

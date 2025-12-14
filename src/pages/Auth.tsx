@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import InterestPopup from "@/components/InterestPopup";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showInterestPopup, setShowInterestPopup] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -24,9 +26,21 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
-      navigate("/");
+      // Check if we should show the interest popup (first time after login in this session)
+      const hasShownPopup = sessionStorage.getItem("interestPopupShown");
+      if (!hasShownPopup) {
+        setShowInterestPopup(true);
+        sessionStorage.setItem("interestPopupShown", "true");
+      } else {
+        navigate("/");
+      }
     }
   }, [user, navigate]);
+
+  const handleClosePopup = () => {
+    setShowInterestPopup(false);
+    navigate("/");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +60,7 @@ const Auth = () => {
             title: "Welcome back!",
             description: "You have successfully logged in.",
           });
-          navigate("/");
+          // Don't navigate here - useEffect will handle showing popup and navigation
         }
       } else {
         if (!formData.fullName.trim()) {
@@ -79,7 +93,7 @@ const Auth = () => {
             title: "Account Created!",
             description: "You can now login and book trips.",
           });
-          navigate("/");
+          // Don't navigate here - useEffect will handle showing popup and navigation
         }
       }
     } catch (err) {
@@ -193,6 +207,12 @@ const Auth = () => {
       </main>
 
       <Footer />
+
+      {/* Interest Popup */}
+      <InterestPopup 
+        isOpen={showInterestPopup} 
+        onClose={handleClosePopup} 
+      />
     </div>
   );
 };

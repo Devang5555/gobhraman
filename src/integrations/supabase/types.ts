@@ -74,6 +74,51 @@ export type Database = {
         }
         Relationships: []
       }
+      interested_users: {
+        Row: {
+          admin_notes: string | null
+          created_at: string | null
+          id: string
+          mobile: string
+          name: string
+          preferred_date: string
+          status: string
+          submitted_at: string
+          trip_id: string
+          trip_name: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string | null
+          id?: string
+          mobile: string
+          name: string
+          preferred_date: string
+          status?: string
+          submitted_at?: string
+          trip_id: string
+          trip_name: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string | null
+          id?: string
+          mobile?: string
+          name?: string
+          preferred_date?: string
+          status?: string
+          submitted_at?: string
+          trip_id?: string
+          trip_name?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
