@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, Compass, Phone, User, LogOut, Calendar, Shield } from "lucide-react";
+import { Menu, X, Phone, User, LogOut, Calendar, Shield } from "lucide-react";
+import logo from "@/assets/logo.jpg";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,9 +40,11 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Compass className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img 
+              src={logo} 
+              alt="GoBhraman Logo" 
+              className="w-12 h-12 object-contain group-hover:scale-105 transition-transform"
+            />
             <div className="flex flex-col">
               <span className="font-serif text-xl font-bold text-foreground">GoBhraman</span>
               <span className="text-[10px] text-muted-foreground -mt-1 tracking-wider">KONKAN EDITION</span>
