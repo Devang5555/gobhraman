@@ -80,11 +80,8 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
       return null;
     }
 
-    const { data } = supabase.storage
-      .from('payment-screenshots')
-      .getPublicUrl(fileName);
-
-    return data.publicUrl;
+    // Store just the file path - signed URLs will be generated when viewing
+    return fileName;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
