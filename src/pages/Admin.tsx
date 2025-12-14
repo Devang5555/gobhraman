@@ -58,6 +58,28 @@ const Admin = () => {
   const [leadSearchTerm, setLeadSearchTerm] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
+
+  // Fetch signed URL when a booking with screenshot is selected
+  useEffect(() => {
+    const fetchSignedUrl = async () => {
+      if (selectedBooking?.payment_screenshot_url) {
+        const { data, error } = await supabase.storage
+          .from('payment-screenshots')
+          .createSignedUrl(selectedBooking.payment_screenshot_url, 3600); // 1 hour expiry
+        
+        if (!error && data) {
+          setScreenshotUrl(data.signedUrl);
+        } else {
+          setScreenshotUrl(null);
+        }
+      } else {
+        setScreenshotUrl(null);
+      }
+    };
+    
+    fetchSignedUrl();
+  }, [selectedBooking]);
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
@@ -680,18 +702,22 @@ const Admin = () => {
               {selectedBooking.payment_screenshot_url && (
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Payment Screenshot</p>
-                  <a
-                    href={selectedBooking.payment_screenshot_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block"
-                  >
-                    <img
-                      src={selectedBooking.payment_screenshot_url}
-                      alt="Payment Screenshot"
-                      className="max-w-full h-auto max-h-64 rounded-lg border border-border"
-                    />
-                  </a>
+                  {screenshotUrl ? (
+                    <a
+                      href={screenshotUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img
+                        src={screenshotUrl}
+                        alt="Payment Screenshot"
+                        className="max-w-full h-auto max-h-64 rounded-lg border border-border"
+                      />
+                    </a>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">Loading screenshot...</div>
+                  )}
                 </div>
               )}
 
