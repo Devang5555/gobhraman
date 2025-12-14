@@ -16,7 +16,7 @@ const TripCard = ({ trip, featured = false }: TripCardProps) => {
 
   return (
     <Link
-      to={`/trip/${trip.tripId}`}
+      to={`/trips/${trip.tripId}`}
       className={cn(
         "group block bg-card rounded-xl overflow-hidden border border-border shadow-card hover:shadow-card-hover transition-all duration-300",
         featured && "lg:flex"
