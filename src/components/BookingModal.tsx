@@ -358,39 +358,61 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                     </div>
                   </div>
 
-                  {trip.booking && (
-                    <div className="bg-primary/10 rounded-lg p-4 border border-primary/20">
-                      <h4 className="font-medium text-card-foreground mb-3 flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-primary" />
-                        Pay via UPI
-                      </h4>
-                      <div className="flex flex-col items-center text-center mb-4">
-                        <img 
-                          src={paymentQr} 
-                          alt="Payment QR Code" 
-                          className="w-48 h-48 rounded-lg mb-3"
-                        />
+                  <div className="bg-primary/10 rounded-lg p-4 border border-primary/20">
+                    <h4 className="font-medium text-card-foreground mb-3 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-primary" />
+                      Pay via UPI
+                    </h4>
+                    
+                    {/* QR Code Section */}
+                    <div className="flex flex-col items-center text-center mb-4">
+                      <img 
+                        src={paymentQr} 
+                        alt="Payment QR Code" 
+                        className="w-48 h-48 rounded-lg border border-border shadow-sm mb-3"
+                      />
+                      {trip.booking?.upi && (
                         <p className="font-mono text-lg text-primary font-bold">{trip.booking.upi}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Send ₹{(advanceAmount * parseInt(formData.travelers)).toLocaleString()} as advance payment
-                        </p>
-                      </div>
-                      {trip.booking.bank && (
-                        <div className="mt-4 pt-4 border-t border-border">
-                          <p className="text-xs text-muted-foreground mb-2">Or pay via Bank Transfer:</p>
-                          <div className="space-y-1 text-xs text-muted-foreground">
-                            <p><strong>Name:</strong> {trip.booking.bank.name}</p>
-                            <p><strong>A/C:</strong> {trip.booking.bank.accountNumber}</p>
-                            <p><strong>IFSC:</strong> {trip.booking.bank.ifsc}</p>
-                          </div>
-                        </div>
                       )}
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Send ₹{(advanceAmount * parseInt(formData.travelers)).toLocaleString()} as advance payment
+                      </p>
                     </div>
-                  )}
+
+                    {/* Helper Text */}
+                    <p className="text-xs text-center text-muted-foreground mb-4">
+                      You can scan the QR or enter your UPI ID to complete the payment.
+                    </p>
+
+                    {/* Optional UPI ID Input */}
+                    <div className="mb-4">
+                      <Label htmlFor="upiIdInput" className="mb-2 block text-sm text-muted-foreground">
+                        Enter UPI ID (optional)
+                      </Label>
+                      <Input
+                        id="upiIdInput"
+                        value={formData.upiTransactionId}
+                        onChange={(e) => setFormData({ ...formData, upiTransactionId: e.target.value })}
+                        placeholder="name@upi, name@okaxis, name@okhdfc..."
+                        className="text-sm"
+                      />
+                    </div>
+
+                    {trip.booking?.bank && (
+                      <div className="mt-4 pt-4 border-t border-border">
+                        <p className="text-xs text-muted-foreground mb-2">Or pay via Bank Transfer:</p>
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          <p><strong>Name:</strong> {trip.booking.bank.name}</p>
+                          <p><strong>A/C:</strong> {trip.booking.bank.accountNumber}</p>
+                          <p><strong>IFSC:</strong> {trip.booking.bank.ifsc}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <div className="bg-accent/10 rounded-lg p-4 border border-accent/20">
                     <p className="text-sm text-accent-foreground">
-                      <strong>Next Step:</strong> After making the payment, you'll upload the payment screenshot to confirm your booking.
+                      <strong>Next Step:</strong> After making the payment, click "Proceed to Pay" below and upload your payment screenshot.
                     </p>
                   </div>
                 </div>
