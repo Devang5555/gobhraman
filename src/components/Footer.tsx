@@ -17,7 +17,7 @@ const Footer = () => {
               />
               <div className="flex flex-col">
                 <span className="font-serif text-xl font-bold">GoBhraman</span>
-                <span className="text-[10px] opacity-70 -mt-1 tracking-wider">KONKAN EDITION</span>
+                <span className="text-[10px] opacity-70 -mt-1 tracking-wide">भ्रमण से मिटे भ्रम</span>
               </div>
             </Link>
             <p className="text-sm opacity-80 mb-6">

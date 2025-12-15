@@ -49,7 +49,7 @@ const Navbar = () => {
             </div>
             <div className="flex flex-col">
               <span className="font-serif text-xl font-bold text-foreground">GoBhraman</span>
-              <span className="text-[10px] text-primary font-semibold -mt-1 tracking-wider uppercase">KONKAN EDITION</span>
+              <span className="text-[10px] text-primary font-semibold -mt-1 tracking-wide">भ्रमण से मिटे भ्रम</span>
             </div>
           </Link>
 

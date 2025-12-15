@@ -440,16 +440,25 @@ const Admin = () => {
 
           {/* Tabs */}
           <Tabs defaultValue="bookings" className="space-y-6">
-            <TabsList className="grid w-full md:w-auto grid-cols-2 md:inline-flex">
+            <TabsList className="grid w-full md:w-auto grid-cols-3 md:inline-flex">
               <TabsTrigger value="bookings" className="gap-2">
                 <Calendar className="w-4 h-4" />
                 Bookings
               </TabsTrigger>
+              <TabsTrigger value="batches" className="gap-2">
+                <Layers className="w-4 h-4" />
+                Batches
+              </TabsTrigger>
               <TabsTrigger value="leads" className="gap-2">
                 <Users className="w-4 h-4" />
-                Interested Leads
+                Leads
               </TabsTrigger>
             </TabsList>
+
+            {/* Batches Tab */}
+            <TabsContent value="batches">
+              <BatchManagement batches={batches} onRefresh={fetchData} />
+            </TabsContent>
 
             {/* Bookings Tab */}
             <TabsContent value="bookings" className="space-y-4">
@@ -808,25 +817,56 @@ const Admin = () => {
                 </div>
               )}
 
-              {selectedBooking.status === "pending" && (
-                <div className="flex gap-3 pt-4 border-t border-border">
+              {/* Action Buttons */}
+              <div className="space-y-3 pt-4 border-t border-border">
+                {selectedBooking.status === "pending" && (
+                  <div className="flex gap-3">
+                    <Button
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      onClick={() => verifyAdvancePayment(selectedBooking)}
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Verify & Confirm
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="flex-1"
+                      onClick={() => updateBookingStatus(selectedBooking.id, "cancelled")}
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Reject
+                    </Button>
+                  </div>
+                )}
+                
+                {selectedBooking.status === "confirmed" && selectedBooking.payment_status !== "fully_paid" && (
                   <Button
-                    className="flex-1 bg-green-600 hover:bg-green-700"
-                    onClick={() => updateBookingStatus(selectedBooking.id, "confirmed")}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    onClick={() => markFullyPaid(selectedBooking)}
                   >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Confirm Booking
+                    <Wallet className="w-4 h-4 mr-2" />
+                    Mark Balance as Paid
                   </Button>
+                )}
+
+                {selectedBooking.status === "confirmed" && (
                   <Button
-                    variant="destructive"
-                    className="flex-1"
-                    onClick={() => updateBookingStatus(selectedBooking.id, "cancelled")}
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      const message = selectedBooking.payment_status === "fully_paid" 
+                        ? `Hi ${selectedBooking.full_name}, your booking for ${selectedBooking.trip_name} is fully confirmed!`
+                        : `Hi ${selectedBooking.full_name}, your advance for ${selectedBooking.trip_name} is verified. Balance: ₹${(selectedBooking.remaining_amount || 0).toLocaleString()}`;
+                      const phone = selectedBooking.phone.replace(/\D/g, '');
+                      const phoneWithCountry = phone.startsWith('91') ? phone : `91${phone}`;
+                      window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(message)}`, '_blank');
+                    }}
                   >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    Cancel Booking
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Send WhatsApp Message
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>

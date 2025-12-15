@@ -1,7 +1,7 @@
 // UPI Deep Link Helper for payment redirect
 
-// Placeholder UPI ID - replace with actual merchant UPI
-const MERCHANT_UPI_ID = "merchant@upi";
+// Merchant UPI ID for GoBhraman
+const MERCHANT_UPI_ID = "8433676328@indie";
 const MERCHANT_NAME = "GoBhraman";
 
 export interface UpiPaymentDetails {

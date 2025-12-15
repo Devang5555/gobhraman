@@ -17,6 +17,9 @@ interface Booking {
   num_travelers: number;
   travel_date: string | null;
   amount: number;
+  advance_amount: number | null;
+  remaining_amount: number | null;
+  payment_status: string | null;
   status: string;
   created_at: string;
 }
@@ -88,14 +91,20 @@ const MyBookings = () => {
   };
 
   const getPaymentStatus = (booking: Booking) => {
-    const advancePaid = ADVANCE_AMOUNT * booking.num_travelers;
-    const balanceAmount = booking.amount - advancePaid;
-    
-    // If booking is confirmed and balance is 0, it's fully paid
+    if (booking.payment_status === "fully_paid") return "Fully Paid";
+    if (booking.payment_status === "advance_verified") return "Advance Verified";
+    const advancePaid = booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers;
+    const balanceAmount = booking.remaining_amount ?? (booking.amount - advancePaid);
     if (booking.status === "confirmed" && balanceAmount <= 0) {
-      return "Completed";
+      return "Fully Paid";
     }
     return "Partial";
+  };
+
+  const getPaymentStatusColor = (status: string) => {
+    if (status === "Fully Paid") return "bg-green-500/20 text-green-600 border-green-500/30";
+    if (status === "Advance Verified") return "bg-blue-500/20 text-blue-600 border-blue-500/30";
+    return "bg-amber-500/20 text-amber-600 border-amber-500/30";
   };
 
   const formatDate = (dateString: string) => {
@@ -146,8 +155,8 @@ const MyBookings = () => {
           ) : (
             <div className="space-y-4">
               {bookings.map((booking) => {
-                const advancePaid = ADVANCE_AMOUNT * booking.num_travelers;
-                const balanceAmount = Math.max(0, booking.amount - advancePaid);
+                const advancePaid = booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers;
+                const balanceAmount = booking.remaining_amount ?? Math.max(0, booking.amount - advancePaid);
                 const paymentStatus = getPaymentStatus(booking);
                 
                 return (
@@ -205,11 +214,7 @@ const MyBookings = () => {
                           </div>
                           <div>
                             <p className="text-muted-foreground">Payment Status</p>
-                            <Badge 
-                              className={paymentStatus === "Completed" 
-                                ? "bg-green-500/20 text-green-600 border-green-500/30" 
-                                : "bg-amber-500/20 text-amber-600 border-amber-500/30"}
-                            >
+                            <Badge className={getPaymentStatusColor(paymentStatus)}>
                               <Wallet className="w-3 h-3 mr-1" />
                               {paymentStatus}
                             </Badge>
