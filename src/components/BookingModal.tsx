@@ -490,30 +490,33 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                       <div className="flex-1 h-px bg-border" />
                     </div>
 
-                    {/* UPI Collect Section */}
+                    {/* UPI ID Collect Section */}
                     <div className="space-y-3">
                       <Label htmlFor="userUpiId" className="text-sm font-medium text-card-foreground">
-                        Pay via UPI ID
+                        Enter your UPI ID (to receive payment request)
                       </Label>
                       <Input
                         id="userUpiId"
                         value={userUpiId}
                         onChange={(e) => setUserUpiId(e.target.value)}
-                        placeholder="yourname@upi, yourname@okaxis..."
-                        className="text-sm"
+                        placeholder="yourname@upi"
+                        className="text-sm font-mono"
                       />
+                      {userUpiId && !isValidUpiId(userUpiId) && (
+                        <p className="text-xs text-destructive">
+                          Please enter a valid UPI ID (e.g., yourname@upi, yourname@okaxis, yourname@ybl)
+                        </p>
+                      )}
                       <Button 
                         type="button" 
-                        variant="outline" 
                         className="w-full"
                         onClick={handleUpiPayment}
                       >
                         <Smartphone className="w-4 h-4 mr-2" />
                         Pay ₹{totalAdvance.toLocaleString()} via UPI
-                        <ExternalLink className="w-3 h-3 ml-2" />
                       </Button>
                       <p className="text-xs text-center text-muted-foreground">
-                        Opens Google Pay, PhonePe, Paytm, or your default UPI app
+                        You will receive a payment request in your UPI app (Google Pay, PhonePe, Paytm, BHIM)
                       </p>
                     </div>
 
@@ -531,7 +534,7 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
 
                   <div className="bg-accent/10 rounded-lg p-4 border border-accent/20">
                     <p className="text-sm text-accent-foreground">
-                      <strong>Next Step:</strong> After making the payment, click "Proceed to Pay" below and upload your payment screenshot.
+                      <strong>Next Step:</strong> After completing the payment in your UPI app, click "I've Made the Payment" below to upload your payment screenshot for verification.
                     </p>
                   </div>
                 </div>
@@ -539,10 +542,16 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
 
               {step === 3 && (
                 <div className="space-y-4">
+                  <div className="bg-primary/10 rounded-lg p-4 border border-primary/20 mb-4">
+                    <p className="text-sm text-primary font-medium">
+                      If payment is completed, please upload the payment screenshot for verification.
+                    </p>
+                  </div>
+                  
                   <div className="bg-muted rounded-lg p-4">
-                    <h4 className="font-medium text-card-foreground mb-2">Upload Payment Proof</h4>
+                    <h4 className="font-medium text-card-foreground mb-2">Upload Payment Screenshot</h4>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Please upload a screenshot of your UPI payment to confirm your booking.
+                      Upload a clear screenshot showing the payment confirmation from your UPI app.
                     </p>
                     
                     <div>
