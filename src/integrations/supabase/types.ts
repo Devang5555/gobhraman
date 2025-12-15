@@ -14,18 +14,61 @@ export type Database = {
   }
   public: {
     Tables: {
+      batches: {
+        Row: {
+          batch_name: string
+          batch_size: number
+          created_at: string
+          end_date: string
+          id: string
+          seats_booked: number
+          start_date: string
+          status: string
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          batch_name: string
+          batch_size?: number
+          created_at?: string
+          end_date: string
+          id?: string
+          seats_booked?: number
+          start_date: string
+          status?: string
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          batch_name?: string
+          batch_size?: number
+          created_at?: string
+          end_date?: string
+          id?: string
+          seats_booked?: number
+          start_date?: string
+          status?: string
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bookings: {
         Row: {
           admin_notes: string | null
+          advance_amount: number | null
           amount: number
+          batch_id: string | null
           created_at: string | null
           email: string
           full_name: string
           id: string
           num_travelers: number
           payment_screenshot_url: string | null
+          payment_status: string | null
           phone: string
           pickup_location: string
+          remaining_amount: number | null
           status: string
           travel_date: string | null
           trip_id: string
@@ -36,15 +79,19 @@ export type Database = {
         }
         Insert: {
           admin_notes?: string | null
+          advance_amount?: number | null
           amount: number
+          batch_id?: string | null
           created_at?: string | null
           email: string
           full_name: string
           id?: string
           num_travelers?: number
           payment_screenshot_url?: string | null
+          payment_status?: string | null
           phone: string
           pickup_location: string
+          remaining_amount?: number | null
           status?: string
           travel_date?: string | null
           trip_id: string
@@ -55,15 +102,19 @@ export type Database = {
         }
         Update: {
           admin_notes?: string | null
+          advance_amount?: number | null
           amount?: number
+          batch_id?: string | null
           created_at?: string | null
           email?: string
           full_name?: string
           id?: string
           num_travelers?: number
           payment_screenshot_url?: string | null
+          payment_status?: string | null
           phone?: string
           pickup_location?: string
+          remaining_amount?: number | null
           status?: string
           travel_date?: string | null
           trip_id?: string
@@ -72,7 +123,15 @@ export type Database = {
           upi_transaction_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bookings_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       interested_users: {
         Row: {
@@ -118,6 +177,53 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      payments: {
+        Row: {
+          amount: number
+          booking_id: string
+          created_at: string
+          id: string
+          payment_type: string
+          screenshot_url: string | null
+          status: string
+          updated_at: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          amount: number
+          booking_id: string
+          created_at?: string
+          id?: string
+          payment_type?: string
+          screenshot_url?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          amount?: number
+          booking_id?: string
+          created_at?: string
+          id?: string
+          payment_type?: string
+          screenshot_url?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {

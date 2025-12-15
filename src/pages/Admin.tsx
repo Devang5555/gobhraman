@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, XCircle, Clock, Eye, Search, Filter, Users, Phone, Calendar, Wallet, UserCheck, PhoneCall, XOctagon } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Eye, Search, Filter, Users, Phone, Calendar, Wallet, UserCheck, PhoneCall, XOctagon, MessageCircle, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,6 +11,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import AdminStats from "@/components/admin/AdminStats";
+import BatchManagement from "@/components/admin/BatchManagement";
+import { openWhatsAppAdvanceVerified, openWhatsAppFullyPaid } from "@/lib/whatsapp";
 
 interface Booking {
   id: string;
@@ -23,6 +26,10 @@ interface Booking {
   num_travelers: number;
   travel_date: string | null;
   amount: number;
+  advance_amount: number | null;
+  remaining_amount: number | null;
+  payment_status: string | null;
+  batch_id: string | null;
   upi_transaction_id: string | null;
   payment_screenshot_url: string | null;
   status: string;
@@ -42,6 +49,17 @@ interface InterestedUser {
   status: string;
 }
 
+interface Batch {
+  id: string;
+  trip_id: string;
+  batch_name: string;
+  start_date: string;
+  end_date: string;
+  batch_size: number;
+  seats_booked: number;
+  status: string;
+}
+
 const ADVANCE_AMOUNT = 2000;
 
 const Admin = () => {
@@ -52,9 +70,11 @@ const Admin = () => {
   const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
   const [interestedUsers, setInterestedUsers] = useState<InterestedUser[]>([]);
   const [filteredInterested, setFilteredInterested] = useState<InterestedUser[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
   const [leadSearchTerm, setLeadSearchTerm] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -115,9 +135,13 @@ const Admin = () => {
     if (statusFilter !== "all") {
       filtered = filtered.filter((b) => b.status === statusFilter);
     }
+
+    if (paymentStatusFilter !== "all") {
+      filtered = filtered.filter((b) => b.payment_status === paymentStatusFilter);
+    }
     
     setFilteredBookings(filtered);
-  }, [bookings, searchTerm, statusFilter]);
+  }, [bookings, searchTerm, statusFilter, paymentStatusFilter]);
 
   useEffect(() => {
     let filtered = interestedUsers;
@@ -140,9 +164,10 @@ const Admin = () => {
   }, [interestedUsers, leadSearchTerm, leadStatusFilter]);
 
   const fetchData = async () => {
-    const [bookingsRes, interestedRes] = await Promise.all([
+    const [bookingsRes, interestedRes, batchesRes] = await Promise.all([
       supabase.from("bookings").select("*").order("created_at", { ascending: false }),
       supabase.from("interested_users").select("*").order("submitted_at", { ascending: false }),
+      supabase.from("batches").select("*").order("start_date", { ascending: true }),
     ]);
 
     if (bookingsRes.error) {
@@ -165,13 +190,22 @@ const Admin = () => {
       setInterestedUsers(interestedRes.data || []);
     }
 
+    if (!batchesRes.error) {
+      setBatches(batchesRes.data || []);
+    }
+
     setLoadingData(false);
   };
 
-  const updateBookingStatus = async (bookingId: string, status: string) => {
+  const updateBookingStatus = async (bookingId: string, status: string, paymentStatus?: string) => {
+    const updateData: any = { status };
+    if (paymentStatus) {
+      updateData.payment_status = paymentStatus;
+    }
+
     const { error } = await supabase
       .from("bookings")
-      .update({ status })
+      .update(updateData)
       .eq("id", bookingId);
 
     if (error) {
@@ -185,6 +219,44 @@ const Admin = () => {
         title: "Success",
         description: `Booking ${status === "confirmed" ? "confirmed" : "cancelled"}`,
       });
+      fetchData();
+      setSelectedBooking(null);
+    }
+  };
+
+  const verifyAdvancePayment = async (booking: Booking) => {
+    await updateBookingStatus(booking.id, "confirmed", "advance_verified");
+    
+    // Open WhatsApp notification
+    openWhatsAppAdvanceVerified(booking.phone, {
+      userName: booking.full_name,
+      tripName: booking.trip_name,
+      advanceAmount: booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers,
+      remainingAmount: booking.remaining_amount || booking.amount - (ADVANCE_AMOUNT * booking.num_travelers),
+      bookingId: booking.id.slice(0, 8).toUpperCase(),
+    });
+  };
+
+  const markFullyPaid = async (booking: Booking) => {
+    const { error } = await supabase
+      .from("bookings")
+      .update({ payment_status: "fully_paid", remaining_amount: 0 })
+      .eq("id", booking.id);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to update payment status", variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: "Marked as fully paid" });
+      
+      // Open WhatsApp notification
+      openWhatsAppFullyPaid(booking.phone, {
+        userName: booking.full_name,
+        tripName: booking.trip_name,
+        advanceAmount: booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers,
+        remainingAmount: 0,
+        bookingId: booking.id.slice(0, 8).toUpperCase(),
+      });
+      
       fetchData();
       setSelectedBooking(null);
     }
@@ -235,9 +307,24 @@ const Admin = () => {
     }
   };
 
+  const getPaymentStatusBadge = (paymentStatus: string | null) => {
+    switch (paymentStatus) {
+      case "fully_paid":
+        return <Badge className="bg-green-500/20 text-green-600 border-green-500/30">Fully Paid</Badge>;
+      case "advance_verified":
+        return <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/30">Advance Verified</Badge>;
+      case "partial":
+        return <Badge className="bg-amber-500/20 text-amber-600 border-amber-500/30">Partial</Badge>;
+      default:
+        return <Badge className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30">Pending Advance</Badge>;
+    }
+  };
+
   const getPaymentStatus = (booking: Booking) => {
-    const advancePaid = ADVANCE_AMOUNT * booking.num_travelers;
-    const balanceAmount = booking.amount - advancePaid;
+    if (booking.payment_status === "fully_paid") return "Completed";
+    if (booking.payment_status === "advance_verified") return "Advance Verified";
+    const advancePaid = booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers;
+    const balanceAmount = booking.remaining_amount || booking.amount - advancePaid;
     if (booking.status === "confirmed" && balanceAmount <= 0) {
       return "Completed";
     }
