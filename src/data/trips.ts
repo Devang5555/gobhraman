@@ -44,6 +44,7 @@ export interface Trip {
   locations?: string[];
   images: string[];
   isActive: boolean;
+  tripStatus: 'active' | 'upcoming'; // NEW: Only 'active' trips can be booked
   capacity?: number;
   availableDates?: string[];
   contact?: {
@@ -52,6 +53,8 @@ export interface Trip {
   };
   notes?: string;
   highlights?: string[];
+  stayDetails?: string[]; // For camping trips
+  activities?: string[]; // Featured activities
 }
 
 export const trips: Trip[] = [
@@ -147,6 +150,7 @@ export const trips: Trip[] = [
       "https://images.unsplash.com/photo-1559494007-9f5847c49d94?w=800&q=80"
     ],
     isActive: true,
+    tripStatus: 'active', // ONLY THIS TRIP IS BOOKABLE
     capacity: 40,
     contact: {
       phone: "+91-9415026522",
@@ -155,7 +159,98 @@ export const trips: Trip[] = [
     notes: "Items marked with * in the brochure are not included in package."
   },
   {
-    tripId: "konkan-weekend-alibaug-002",
+    tripId: "alibagh-beach-camping-002",
+    tripName: "Alibagh Beach Camping Experience",
+    price: { default: 4999 },
+    duration: "2D/1N",
+    summary: "Experience magical beach camping with bonfire nights, stunning sunrise views, and exciting water activities at Alibagh's pristine beaches.",
+    highlights: [
+      "Beachside tent camping",
+      "Bonfire & music night",
+      "Sunrise & sunset views",
+      "Beach games & activities",
+      "Visit historic Kolaba Fort",
+      "Optional water sports"
+    ],
+    stayDetails: [
+      "Night camp stay at beachside",
+      "Comfortable tents near the beach",
+      "Bonfire setup with soft music",
+      "Clean shared washrooms",
+      "Basic bedding and sleeping bags"
+    ],
+    activities: [
+      "Beach camping",
+      "Bonfire night",
+      "Beach games",
+      "Sunset & sunrise views",
+      "Water sports (optional, paid)",
+      "Photography & relaxation"
+    ],
+    itinerary: [
+      {
+        day: 1,
+        title: "Arrival | Beach Exploration | Bonfire Night",
+        schedule: [
+          { time: "07:00", activity: "Departure from Mumbai / Pune" },
+          { time: "09:00", activity: "Breakfast en route" },
+          { time: "11:00", activity: "Visit Alibagh Beach - free time" },
+          { time: "12:30", activity: "Explore historic Kolaba Fort" },
+          { time: "14:00", activity: "Lunch (local Konkani cuisine)" },
+          { time: "16:00", activity: "Check-in to beachside campsite" },
+          { time: "17:00", activity: "Evening beach games & leisure time" },
+          { time: "18:30", activity: "Sunset viewing at beach" },
+          { time: "20:00", activity: "Bonfire + soft music night" },
+          { time: "21:00", activity: "Dinner at campsite" },
+          { time: "22:30", activity: "Overnight stay in beachside tents" }
+        ]
+      },
+      {
+        day: 2,
+        title: "Sunrise | Nagaon Beach | Return Journey",
+        schedule: [
+          { time: "06:00", activity: "Early morning beach walk & sunrise" },
+          { time: "07:30", activity: "Tea & breakfast at camp" },
+          { time: "09:30", activity: "Visit Nagaon Beach" },
+          { time: "10:30", activity: "Water activities (banana ride / jet ski – optional, extra cost)" },
+          { time: "12:00", activity: "Local sightseeing" },
+          { time: "13:30", activity: "Lunch" },
+          { time: "15:00", activity: "Return journey begins" },
+          { time: "19:00", activity: "Arrive Mumbai / Pune" }
+        ]
+      }
+    ],
+    inclusions: [
+      "AC/Non-AC transport (based on group size)",
+      "Beachside tent accommodation",
+      "Bonfire with music setup",
+      "Meals: 1 breakfast, 2 lunches, 1 dinner",
+      "Kolaba Fort entry fees",
+      "Beach games equipment",
+      "First aid support"
+    ],
+    exclusions: [
+      "Water sports activities (optional)",
+      "Personal expenses",
+      "Travel to pickup point",
+      "Beverages & snacks not mentioned",
+      "Camera fees at monuments"
+    ],
+    locations: ["Alibagh Beach", "Kolaba Fort", "Nagaon Beach"],
+    images: [
+      "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800&q=80",
+      "https://images.unsplash.com/photo-1533873984035-25970ab07461?w=800&q=80"
+    ],
+    isActive: true,
+    tripStatus: 'upcoming', // UPCOMING - NOT BOOKABLE
+    capacity: 30,
+    contact: {
+      phone: "+91-9415026522",
+      email: "bhramanbyua@gmail.com"
+    }
+  },
+  {
+    tripId: "konkan-weekend-alibaug-003",
     tripName: "Konkan Weekend Escape — Alibaug & Mandwa",
     price: { default: 5499 },
     duration: "2D/1N",
@@ -168,6 +263,7 @@ export const trips: Trip[] = [
     ],
     images: ["https://images.unsplash.com/photo-1590523741831-ab7e8b8f9c7f?w=800&q=80"],
     isActive: true,
+    tripStatus: 'upcoming',
     availableDates: ["2025-01-18", "2025-02-15", "2025-03-15"],
     locations: ["Alibaug", "Mandwa", "Kolaba Fort"],
     contact: {
@@ -176,7 +272,7 @@ export const trips: Trip[] = [
     }
   },
   {
-    tripId: "ratnagiri-beaches-003",
+    tripId: "ratnagiri-beaches-004",
     tripName: "Ratnagiri Beaches & Sunset Forts",
     price: { default: 9999 },
     duration: "3D/2N",
@@ -189,6 +285,7 @@ export const trips: Trip[] = [
     ],
     images: ["https://images.unsplash.com/photo-1468413253725-0d5181091126?w=800&q=80"],
     isActive: true,
+    tripStatus: 'upcoming',
     locations: ["Ganpatipule", "Jaigad Fort", "Ratnagiri Beach"],
     contact: {
       phone: "+91-9415026522",
@@ -196,7 +293,7 @@ export const trips: Trip[] = [
     }
   },
   {
-    tripId: "sindhudurg-tarkarli-004",
+    tripId: "sindhudurg-tarkarli-005",
     tripName: "Sindhudurg Fort & Tarkarli Water Sports",
     price: { default: 18999 },
     duration: "4D/3N",
@@ -209,6 +306,7 @@ export const trips: Trip[] = [
     ],
     images: ["https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80"],
     isActive: true,
+    tripStatus: 'upcoming',
     locations: ["Sindhudurg Fort", "Tarkarli", "Devbaug"],
     contact: {
       phone: "+91-9415026522",
@@ -216,7 +314,7 @@ export const trips: Trip[] = [
     }
   },
   {
-    tripId: "murud-janjira-005",
+    tripId: "murud-janjira-006",
     tripName: "Murud-Janjira & Kulaba Fort",
     price: { default: 6999 },
     duration: "2D/1N",
@@ -229,6 +327,7 @@ export const trips: Trip[] = [
     ],
     images: ["https://images.unsplash.com/photo-1596402184320-417e7178b2cd?w=800&q=80"],
     isActive: true,
+    tripStatus: 'upcoming',
     locations: ["Murud", "Janjira Fort", "Kulaba Fort"],
     contact: {
       phone: "+91-9415026522",
@@ -236,7 +335,7 @@ export const trips: Trip[] = [
     }
   },
   {
-    tripId: "guhagar-devgad-006",
+    tripId: "guhagar-devgad-007",
     tripName: "Guhagar & Devgad Mango Trails",
     price: { default: 8499 },
     duration: "3D/2N",
@@ -249,6 +348,7 @@ export const trips: Trip[] = [
     ],
     images: ["https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800&q=80"],
     isActive: true,
+    tripStatus: 'upcoming',
     locations: ["Guhagar", "Devgad", "Velneshwar"],
     contact: {
       phone: "+91-9415026522",
@@ -256,7 +356,7 @@ export const trips: Trip[] = [
     }
   },
   {
-    tripId: "coastal-drive-mumbai-goa-007",
+    tripId: "coastal-drive-mumbai-goa-008",
     tripName: "Konkan Coastal Road Trip (Mumbai → Goa)",
     price: { default: 24999 },
     duration: "5D/4N",
@@ -269,6 +369,7 @@ export const trips: Trip[] = [
     ],
     images: ["https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&q=80"],
     isActive: true,
+    tripStatus: 'upcoming',
     locations: ["Mumbai", "Alibaug", "Murud", "Ratnagiri", "Malvan", "Goa"],
     contact: {
       phone: "+91-9415026522",
@@ -283,6 +384,21 @@ export const getTrip = (tripId: string): Trip | undefined => {
 
 export const getActiveTrips = (): Trip[] => {
   return trips.filter(trip => trip.isActive);
+};
+
+// Get only bookable trips (tripStatus === 'active')
+export const getBookableTrips = (): Trip[] => {
+  return trips.filter(trip => trip.isActive && trip.tripStatus === 'active');
+};
+
+// Get upcoming trips (tripStatus === 'upcoming')
+export const getUpcomingTrips = (): Trip[] => {
+  return trips.filter(trip => trip.isActive && trip.tripStatus === 'upcoming');
+};
+
+// Check if a trip is bookable
+export const isTripBookable = (trip: Trip): boolean => {
+  return trip.tripStatus === 'active';
 };
 
 export const getTripPrice = (trip: Trip): number => {
