@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, User, Mail, Phone, Users, Calendar, CreditCard, CheckCircle, Upload, Image } from "lucide-react";
+import { X, User, Mail, Phone, Users, Calendar, CreditCard, CheckCircle, Upload, Smartphone, ExternalLink } from "lucide-react";
 import paymentQr from "@/assets/payment-qr.jpg";
 import { Trip, getTripPrice, formatPrice } from "@/data/trips";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { triggerUpiPayment, isValidUpiId } from "@/lib/upi";
+
+interface Batch {
+  id: string;
+  trip_id: string;
+  batch_name: string;
+  start_date: string;
+  end_date: string;
+  batch_size: number;
+  seats_booked: number;
+  status: string;
+}
 
 interface BookingModalProps {
   trip: Trip;
@@ -23,17 +35,41 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [batches, setBatches] = useState<Batch[]>([]);
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [userUpiId, setUserUpiId] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     travelers: "1",
     pickupPoint: "mumbai",
-    date: "",
+    batchId: "",
     upiTransactionId: "",
   });
+
+  // Fetch available batches for this trip
+  useEffect(() => {
+    const fetchBatches = async () => {
+      const { data } = await supabase
+        .from("batches")
+        .select("*")
+        .eq("trip_id", trip.tripId)
+        .eq("status", "active")
+        .order("start_date", { ascending: true });
+      
+      if (data) {
+        // Filter out full batches
+        const availableBatches = data.filter(b => b.seats_booked < b.batch_size);
+        setBatches(availableBatches);
+      }
+    };
+
+    if (isOpen) {
+      fetchBatches();
+    }
+  }, [trip.tripId, isOpen]);
 
   if (!isOpen) return null;
 
@@ -44,6 +80,8 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
   
   const totalPrice = selectedPrice * parseInt(formData.travelers);
   const advanceAmount = trip.booking?.advance || 2000;
+  const totalAdvance = advanceAmount * parseInt(formData.travelers);
+  const remainingAmount = totalPrice - totalAdvance;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -116,6 +154,8 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
       try {
         const screenshotUrl = await uploadScreenshot();
 
+        const selectedBatch = batches.find(b => b.id === formData.batchId);
+        
         const { error } = await supabase.from("bookings").insert({
           user_id: user!.id,
           trip_id: trip.tripId,
@@ -125,14 +165,26 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
           phone: formData.phone,
           pickup_location: formData.pickupPoint,
           num_travelers: parseInt(formData.travelers),
-          travel_date: formData.date || null,
+          travel_date: selectedBatch?.start_date || null,
           amount: totalPrice,
+          advance_amount: totalAdvance,
+          remaining_amount: remainingAmount,
+          batch_id: formData.batchId || null,
           upi_transaction_id: formData.upiTransactionId || null,
           payment_screenshot_url: screenshotUrl,
           status: "pending",
+          payment_status: "pending_advance",
         });
 
         if (error) throw error;
+
+        // Update batch seats_booked count
+        if (formData.batchId) {
+          await supabase
+            .from("batches")
+            .update({ seats_booked: (selectedBatch?.seats_booked || 0) + parseInt(formData.travelers) })
+            .eq("id", formData.batchId);
+        }
 
         toast({
           title: "Booking Submitted!",
@@ -160,12 +212,34 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
       phone: "",
       travelers: "1",
       pickupPoint: "mumbai",
-      date: "",
+      batchId: "",
       upiTransactionId: "",
     });
+    setUserUpiId("");
     setScreenshotFile(null);
     setScreenshotPreview(null);
     onClose();
+  };
+
+  const handleUpiPayment = () => {
+    triggerUpiPayment({
+      amount: totalAdvance,
+      transactionNote: `${trip.tripName} Advance Payment`,
+      transactionRef: `GOB-${Date.now()}`,
+    });
+    
+    toast({
+      title: "Opening UPI App",
+      description: "Complete the payment in your UPI app and return here to upload the screenshot.",
+    });
+  };
+
+  const formatBatchDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
   };
 
   return (
@@ -331,6 +405,31 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                       </div>
                     )}
                   </div>
+
+                  {/* Batch Selection */}
+                  {batches.length > 0 && (
+                    <div>
+                      <Label className="flex items-center gap-2 mb-2">
+                        <Calendar className="w-4 h-4 text-primary" />
+                        Select Batch
+                      </Label>
+                      <Select
+                        value={formData.batchId}
+                        onValueChange={(value) => setFormData({ ...formData, batchId: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose your travel dates" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {batches.map((batch) => (
+                            <SelectItem key={batch.id} value={batch.id}>
+                              {batch.batch_name} ({formatBatchDate(batch.start_date)} - {formatBatchDate(batch.end_date)}) - {batch.batch_size - batch.seats_booked} seats left
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -353,7 +452,11 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Advance to pay now</span>
-                        <span className="text-accent font-medium">{formatPrice(advanceAmount * parseInt(formData.travelers))}</span>
+                        <span className="text-accent font-medium">{formatPrice(totalAdvance)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Remaining (pay later)</span>
+                        <span className="text-muted-foreground">{formatPrice(remainingAmount)}</span>
                       </div>
                     </div>
                   </div>
@@ -366,36 +469,52 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                     
                     {/* QR Code Section */}
                     <div className="flex flex-col items-center text-center mb-4">
+                      <p className="text-xs text-muted-foreground mb-2">Scan & Pay via any UPI App</p>
                       <img 
                         src={paymentQr} 
                         alt="Payment QR Code" 
-                        className="w-48 h-48 rounded-lg border border-border shadow-sm mb-3"
+                        className="w-40 h-40 rounded-lg border border-border shadow-sm mb-3"
                       />
                       {trip.booking?.upi && (
-                        <p className="font-mono text-lg text-primary font-bold">{trip.booking.upi}</p>
+                        <p className="font-mono text-sm text-primary font-bold">{trip.booking.upi}</p>
                       )}
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Send ₹{(advanceAmount * parseInt(formData.travelers)).toLocaleString()} as advance payment
+                      <p className="text-sm text-foreground font-medium mt-1">
+                        Pay ₹{totalAdvance.toLocaleString()} as advance
                       </p>
                     </div>
 
-                    {/* Helper Text */}
-                    <p className="text-xs text-center text-muted-foreground mb-4">
-                      You can scan the QR or enter your UPI ID to complete the payment.
-                    </p>
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 my-4">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-xs text-muted-foreground">OR</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
 
-                    {/* Optional UPI ID Input */}
-                    <div className="mb-4">
-                      <Label htmlFor="upiIdInput" className="mb-2 block text-sm text-muted-foreground">
-                        Enter UPI ID (optional)
+                    {/* UPI Collect Section */}
+                    <div className="space-y-3">
+                      <Label htmlFor="userUpiId" className="text-sm font-medium text-card-foreground">
+                        Pay via UPI ID
                       </Label>
                       <Input
-                        id="upiIdInput"
-                        value={formData.upiTransactionId}
-                        onChange={(e) => setFormData({ ...formData, upiTransactionId: e.target.value })}
-                        placeholder="name@upi, name@okaxis, name@okhdfc..."
+                        id="userUpiId"
+                        value={userUpiId}
+                        onChange={(e) => setUserUpiId(e.target.value)}
+                        placeholder="yourname@upi, yourname@okaxis..."
                         className="text-sm"
                       />
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        className="w-full"
+                        onClick={handleUpiPayment}
+                      >
+                        <Smartphone className="w-4 h-4 mr-2" />
+                        Pay ₹{totalAdvance.toLocaleString()} via UPI
+                        <ExternalLink className="w-3 h-3 ml-2" />
+                      </Button>
+                      <p className="text-xs text-center text-muted-foreground">
+                        Opens Google Pay, PhonePe, Paytm, or your default UPI app
+                      </p>
                     </div>
 
                     {trip.booking?.bank && (
