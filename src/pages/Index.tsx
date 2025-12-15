@@ -1,16 +1,16 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Star, Shield, Users, Headphones } from "lucide-react";
+import { ArrowRight, Star, Shield, Users, Headphones, Sparkles } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import HeroSection from "@/components/HeroSection";
 import TripCard from "@/components/TripCard";
 import { Button } from "@/components/ui/button";
-import { getActiveTrips } from "@/data/trips";
+import { getBookableTrips, getUpcomingTrips } from "@/data/trips";
 
 const Index = () => {
-  const trips = getActiveTrips();
-  const featuredTrip = trips[0]; // Malvan trip
-  const otherTrips = trips.slice(1, 5);
+  const bookableTrips = getBookableTrips();
+  const upcomingTrips = getUpcomingTrips().slice(0, 4);
+  const featuredTrip = bookableTrips[0]; // Malvan trip - the ONLY bookable trip
 
   const features = [
     {
@@ -42,27 +42,33 @@ const Index = () => {
       {/* Hero */}
       <HeroSection />
 
-      {/* Featured Trip */}
-      <section className="py-16 md:py-24 bg-background">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
-            <div>
-              <span className="text-primary font-medium text-sm uppercase tracking-wider">Featured Adventure</span>
-              <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mt-2">
-                Most Popular Trip
-              </h2>
+      {/* Featured Trip - The ONLY Bookable Trip */}
+      {featuredTrip && (
+        <section className="py-16 md:py-24 bg-background">
+          <div className="container mx-auto px-4">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <span className="text-primary font-bold text-sm uppercase tracking-wider">Live & Bookable</span>
+                </div>
+                <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground">
+                  Book Your Adventure Now
+                </h2>
+                <p className="text-muted-foreground mt-2">Limited slots available — reserve your spot today!</p>
+              </div>
             </div>
+            
+            <TripCard trip={featuredTrip} featured />
           </div>
-          
-          <TripCard trip={featuredTrip} featured />
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Why Choose Us */}
-      <section className="py-16 md:py-24 bg-secondary">
+      <section className="py-16 md:py-24 bg-gradient-to-br from-secondary via-muted to-secondary">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <span className="text-primary font-medium text-sm uppercase tracking-wider">Why GoBhraman</span>
+            <span className="text-primary font-bold text-sm uppercase tracking-wider">Why GoBhraman</span>
             <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mt-2">
               Travel with Confidence
             </h2>
@@ -72,10 +78,10 @@ const Index = () => {
             {features.map((feature, index) => (
               <div 
                 key={index}
-                className="bg-card rounded-xl p-6 text-center shadow-card hover:shadow-card-hover transition-shadow"
+                className="bg-card rounded-2xl p-6 text-center shadow-card hover:shadow-card-hover transition-all duration-300 hover:-translate-y-1 border border-border"
               >
-                <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <feature.icon className="w-7 h-7 text-primary" />
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mx-auto mb-4">
+                  <feature.icon className="w-8 h-8 text-primary" />
                 </div>
                 <h3 className="font-serif text-lg font-semibold text-card-foreground mb-2">
                   {feature.title}
@@ -89,49 +95,53 @@ const Index = () => {
         </div>
       </section>
 
-      {/* More Trips */}
-      <section className="py-16 md:py-24 bg-background">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
-            <div>
-              <span className="text-primary font-medium text-sm uppercase tracking-wider">Explore More</span>
-              <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mt-2">
-                Upcoming Adventures
-              </h2>
+      {/* Upcoming Trips */}
+      {upcomingTrips.length > 0 && (
+        <section className="py-16 md:py-24 bg-background">
+          <div className="container mx-auto px-4">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+              <div>
+                <span className="text-sunset font-bold text-sm uppercase tracking-wider">Coming Soon</span>
+                <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mt-2">
+                  Upcoming Adventures
+                </h2>
+                <p className="text-muted-foreground mt-2">Get notified when these exciting trips launch!</p>
+              </div>
+              <Button asChild variant="outline" className="font-semibold">
+                <Link to="/trips">
+                  View All Trips
+                  <ArrowRight className="ml-2 w-4 h-4" />
+                </Link>
+              </Button>
             </div>
-            <Button asChild variant="outline">
-              <Link to="/trips">
-                View All Trips
-                <ArrowRight className="ml-2 w-4 h-4" />
-              </Link>
-            </Button>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {otherTrips.map((trip) => (
-              <TripCard key={trip.tripId} trip={trip} />
-            ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {upcomingTrips.map((trip) => (
+                <TripCard key={trip.tripId} trip={trip} />
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* CTA Section */}
-      <section className="py-16 md:py-24 gradient-hero">
+      <section className="py-16 md:py-24 bg-gradient-to-r from-primary via-ocean-dark to-accent">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="font-serif text-3xl md:text-4xl font-bold text-primary-foreground mb-4">
+          <h2 className="font-serif text-3xl md:text-5xl font-bold text-primary-foreground mb-4">
             Ready for Your Konkan Adventure?
           </h2>
-          <p className="text-lg text-primary-foreground/90 max-w-xl mx-auto mb-8">
+          <p className="text-lg md:text-xl text-primary-foreground/90 max-w-xl mx-auto mb-8">
             Join our next group trip and create unforgettable memories along the beautiful Konkan coast.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button asChild size="lg" variant="secondary" className="text-lg px-8">
+            <Button asChild size="lg" variant="secondary" className="text-lg px-8 font-bold shadow-lg">
               <Link to="/trips">
-                Browse Trips
+                <Sparkles className="w-5 h-5 mr-2" />
+                Book Now
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
             </Button>
-            <Button asChild size="lg" variant="outline" className="text-lg px-8 bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
+            <Button asChild size="lg" variant="outline" className="text-lg px-8 bg-transparent border-2 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground font-semibold">
               <Link to="/contact">
                 Contact Us
               </Link>
@@ -144,7 +154,7 @@ const Index = () => {
       <section className="py-16 md:py-24 bg-background">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <span className="text-primary font-medium text-sm uppercase tracking-wider">Testimonials</span>
+            <span className="text-primary font-bold text-sm uppercase tracking-wider">Testimonials</span>
             <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mt-2">
               What Travelers Say
             </h2>
@@ -173,7 +183,7 @@ const Index = () => {
             ].map((testimonial, index) => (
               <div 
                 key={index}
-                className="bg-card rounded-xl p-6 shadow-card"
+                className="bg-card rounded-2xl p-6 shadow-card hover:shadow-card-hover transition-all duration-300 border border-border"
               >
                 <div className="flex gap-1 mb-4">
                   {[...Array(testimonial.rating)].map((_, i) => (
@@ -184,7 +194,7 @@ const Index = () => {
                   "{testimonial.text}"
                 </p>
                 <div>
-                  <p className="font-medium text-card-foreground">{testimonial.name}</p>
+                  <p className="font-semibold text-card-foreground">{testimonial.name}</p>
                   <p className="text-sm text-muted-foreground">{testimonial.location}</p>
                 </div>
               </div>

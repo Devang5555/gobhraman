@@ -35,19 +35,21 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-border shadow-sm">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
-            <img 
-              src={logo} 
-              alt="GoBhraman Logo" 
-              className="w-12 h-12 object-contain group-hover:scale-105 transition-transform"
-            />
+          {/* Logo - Now Circular */}
+          <Link to="/" className="flex items-center gap-3 group">
+            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary/30 group-hover:border-primary transition-colors shadow-lg">
+              <img 
+                src={logo} 
+                alt="GoBhraman Logo" 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+              />
+            </div>
             <div className="flex flex-col">
               <span className="font-serif text-xl font-bold text-foreground">GoBhraman</span>
-              <span className="text-[10px] text-muted-foreground -mt-1 tracking-wider">KONKAN EDITION</span>
+              <span className="text-[10px] text-primary font-semibold -mt-1 tracking-wider uppercase">KONKAN EDITION</span>
             </div>
           </Link>
 
@@ -58,9 +60,9 @@ const Navbar = () => {
                 key={link.href}
                 to={link.href}
                 className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                  "px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200",
                   isActive(link.href)
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-md"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 )}
               >
@@ -71,15 +73,15 @@ const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <a href="tel:+919415026522" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <a href="tel:+919415026522" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
               <Phone className="w-4 h-4" />
-              <span>+91-9415026522</span>
+              <span className="font-medium">+91-9415026522</span>
             </a>
             
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <Button variant="outline" size="sm" className="gap-2 font-semibold">
                     <User className="w-4 h-4" />
                     <span className="max-w-[100px] truncate">{user.email?.split('@')[0]}</span>
                   </Button>
@@ -107,12 +109,12 @@ const Navbar = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button variant="outline" size="sm" asChild>
+              <Button variant="outline" size="sm" asChild className="font-semibold">
                 <Link to="/auth">Login</Link>
               </Button>
             )}
             
-            <Button asChild>
+            <Button asChild className="bg-gradient-to-r from-primary to-accent hover:opacity-90 font-bold shadow-lg">
               <Link to="/trips">Book Now</Link>
             </Button>
           </div>
@@ -137,9 +139,9 @@ const Navbar = () => {
                   to={link.href}
                   onClick={() => setIsOpen(false)}
                   className={cn(
-                    "px-4 py-3 rounded-lg text-sm font-medium transition-colors",
+                    "px-4 py-3 rounded-lg text-sm font-semibold transition-colors",
                     isActive(link.href)
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-gradient-to-r from-primary to-accent text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   )}
                 >
@@ -153,9 +155,9 @@ const Navbar = () => {
                     to="/my-bookings"
                     onClick={() => setIsOpen(false)}
                     className={cn(
-                      "px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center gap-2",
+                      "px-4 py-3 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2",
                       isActive("/my-bookings")
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-gradient-to-r from-primary to-accent text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted"
                     )}
                   >
@@ -167,9 +169,9 @@ const Navbar = () => {
                       to="/admin"
                       onClick={() => setIsOpen(false)}
                       className={cn(
-                        "px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center gap-2",
+                        "px-4 py-3 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2",
                         isActive("/admin")
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-gradient-to-r from-primary to-accent text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
                       )}
                     >
@@ -179,7 +181,7 @@ const Navbar = () => {
                   )}
                   <button
                     onClick={handleSignOut}
-                    className="px-4 py-3 rounded-lg text-sm font-medium transition-colors text-destructive hover:bg-destructive/10 flex items-center gap-2"
+                    className="px-4 py-3 rounded-lg text-sm font-semibold transition-colors text-destructive hover:bg-destructive/10 flex items-center gap-2"
                   >
                     <LogOut className="w-4 h-4" />
                     Sign Out
@@ -189,7 +191,7 @@ const Navbar = () => {
                 <Link
                   to="/auth"
                   onClick={() => setIsOpen(false)}
-                  className="px-4 py-3 rounded-lg text-sm font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2"
+                  className="px-4 py-3 rounded-lg text-sm font-semibold transition-colors text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-2"
                 >
                   <User className="w-4 h-4" />
                   Login / Sign Up
@@ -197,7 +199,7 @@ const Navbar = () => {
               )}
               
               <div className="pt-4 mt-2 border-t border-border">
-                <Button asChild className="w-full">
+                <Button asChild className="w-full bg-gradient-to-r from-primary to-accent font-bold">
                   <Link to="/trips" onClick={() => setIsOpen(false)}>Book Now</Link>
                 </Button>
               </div>
