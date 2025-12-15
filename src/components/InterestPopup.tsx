@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { X, User, Phone, Calendar, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ interface InterestPopupProps {
 const InterestPopup = ({ isOpen, onClose }: InterestPopupProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -49,13 +51,25 @@ const InterestPopup = ({ isOpen, onClose }: InterestPopupProps) => {
       return;
     }
 
+    // Require user to be logged in
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please login to submit your interest.",
+        variant: "destructive",
+      });
+      onClose();
+      navigate("/auth");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const selectedTrip = activeTrips.find(t => t.tripId === formData.tripId);
       
       const { error } = await supabase.from("interested_users").insert({
-        user_id: user?.id || null,
+        user_id: user.id, // Always required, never null
         name: formData.name,
         mobile: formData.mobile.replace(/\D/g, ''),
         trip_id: formData.tripId,
