@@ -21,6 +21,7 @@ export const generateUpiDeepLink = (details: UpiPaymentDetails): string => {
     am: details.amount.toString(),
     tn: details.transactionNote,
     cu: "INR",
+    mode: "02", // Collect request mode
   });
 
   if (details.transactionRef) {
