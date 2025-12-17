@@ -11,6 +11,29 @@ export interface UpiPaymentDetails {
 }
 
 /**
+ * Generates a UPI payment string for QR code generation
+ * When scanned, opens the UPI app with UPI ID and amount pre-filled
+ * Uses proper UPI intent format that works with all major UPI apps
+ */
+export const generateUpiQrString = (details: UpiPaymentDetails): string => {
+  // Build UPI string manually to avoid over-encoding issues
+  // Format: upi://pay?pa=UPI_ID&pn=NAME&am=AMOUNT&cu=INR&tn=NOTE
+  const upiString = [
+    `pa=${MERCHANT_UPI_ID}`,
+    `pn=${encodeURIComponent(MERCHANT_NAME)}`,
+    `am=${details.amount.toFixed(2)}`,
+    `cu=INR`,
+    `tn=${encodeURIComponent(details.transactionNote)}`,
+  ];
+
+  if (details.transactionRef) {
+    upiString.push(`tr=${encodeURIComponent(details.transactionRef)}`);
+  }
+
+  return `upi://pay?${upiString.join("&")}`;
+};
+
+/**
  * Generates a UPI deep link that opens installed UPI apps
  * Works with Google Pay, PhonePe, Paytm, BHIM, etc.
  */
@@ -30,6 +53,11 @@ export const generateUpiDeepLink = (details: UpiPaymentDetails): string => {
 
   return `upi://pay?${params.toString()}`;
 };
+
+/**
+ * Get the merchant UPI ID for display purposes
+ */
+export const getMerchantUpiId = (): string => MERCHANT_UPI_ID;
 
 /**
  * Triggers UPI payment by redirecting to the deep link

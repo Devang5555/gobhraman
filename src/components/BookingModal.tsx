@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, User, Mail, Phone, Users, Calendar, CreditCard, CheckCircle, Upload, Smartphone, ExternalLink } from "lucide-react";
-import paymentQr from "@/assets/payment-qr.jpg";
+import { X, User, Mail, Phone, Users, Calendar, CreditCard, CheckCircle, Upload } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Trip, getTripPrice, formatPrice } from "@/data/trips";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { triggerUpiPayment, isValidUpiId } from "@/lib/upi";
+import { generateUpiQrString, getMerchantUpiId } from "@/lib/upi";
 
 interface Batch {
   id: string;
@@ -38,7 +38,6 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
-  const [userUpiId, setUserUpiId] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -215,23 +214,9 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
       batchId: "",
       upiTransactionId: "",
     });
-    setUserUpiId("");
     setScreenshotFile(null);
     setScreenshotPreview(null);
     onClose();
-  };
-
-  const handleUpiPayment = () => {
-    triggerUpiPayment({
-      amount: totalAdvance,
-      transactionNote: `${trip.tripName} Advance Payment`,
-      transactionRef: `GOB-${Date.now()}`,
-    });
-    
-    toast({
-      title: "Opening UPI App",
-      description: "Complete the payment in your UPI app and return here to upload the screenshot.",
-    });
   };
 
   const formatBatchDate = (dateString: string) => {
@@ -361,27 +346,73 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                     />
                   </div>
 
+                  {/* Batch Selection - moved before travelers */}
+                  {batches.length > 0 && (
+                    <div>
+                      <Label className="flex items-center gap-2 mb-2">
+                        <Calendar className="w-4 h-4 text-primary" />
+                        Select Batch
+                      </Label>
+                      <Select
+                        value={formData.batchId}
+                        onValueChange={(value) => {
+                          const selectedBatch = batches.find(b => b.id === value);
+                          const availableSeats = selectedBatch ? selectedBatch.batch_size - selectedBatch.seats_booked : 10;
+                          // Reset travelers to 1 if current selection exceeds available seats
+                          const newTravelers = parseInt(formData.travelers) > availableSeats ? "1" : formData.travelers;
+                          setFormData({ ...formData, batchId: value, travelers: newTravelers });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose your travel dates" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {batches.map((batch) => (
+                            <SelectItem key={batch.id} value={batch.id}>
+                              {batch.batch_name} ({formatBatchDate(batch.start_date)} - {formatBatchDate(batch.end_date)}) - {batch.batch_size - batch.seats_booked} seats left
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="travelers" className="flex items-center gap-2 mb-2">
                         <Users className="w-4 h-4 text-primary" />
                         Travelers
                       </Label>
-                      <Select
-                        value={formData.travelers}
-                        onValueChange={(value) => setFormData({ ...formData, travelers: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                            <SelectItem key={num} value={num.toString()}>
-                              {num} {num === 1 ? 'Person' : 'People'}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {(() => {
+                        const selectedBatch = batches.find(b => b.id === formData.batchId);
+                        const maxTravelers = selectedBatch 
+                          ? Math.min(10, selectedBatch.batch_size - selectedBatch.seats_booked)
+                          : 10;
+                        return (
+                          <Select
+                            value={formData.travelers}
+                            onValueChange={(value) => setFormData({ ...formData, travelers: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: maxTravelers }, (_, i) => i + 1).map((num) => (
+                                <SelectItem key={num} value={num.toString()}>
+                                  {num} {num === 1 ? 'Person' : 'People'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        );
+                      })()}
+                      {formData.batchId && (() => {
+                        const selectedBatch = batches.find(b => b.id === formData.batchId);
+                        const availableSeats = selectedBatch ? selectedBatch.batch_size - selectedBatch.seats_booked : 0;
+                        return availableSeats <= 3 && (
+                          <p className="text-xs text-amber-600 mt-1">Only {availableSeats} seat{availableSeats !== 1 ? 's' : ''} left!</p>
+                        );
+                      })()}
                     </div>
 
                     {hasMultiplePrices && (
@@ -405,31 +436,6 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                       </div>
                     )}
                   </div>
-
-                  {/* Batch Selection */}
-                  {batches.length > 0 && (
-                    <div>
-                      <Label className="flex items-center gap-2 mb-2">
-                        <Calendar className="w-4 h-4 text-primary" />
-                        Select Batch
-                      </Label>
-                      <Select
-                        value={formData.batchId}
-                        onValueChange={(value) => setFormData({ ...formData, batchId: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose your travel dates" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {batches.map((batch) => (
-                            <SelectItem key={batch.id} value={batch.id}>
-                              {batch.batch_name} ({formatBatchDate(batch.start_date)} - {formatBatchDate(batch.end_date)}) - {batch.batch_size - batch.seats_booked} seats left
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -467,56 +473,26 @@ const BookingModal = ({ trip, isOpen, onClose }: BookingModalProps) => {
                       Pay via UPI
                     </h4>
                     
-                    {/* QR Code Section */}
-                    <div className="flex flex-col items-center text-center mb-4">
+                    {/* Dynamic QR Code Section */}
+                    <div className="flex flex-col items-center text-center">
                       <p className="text-xs text-muted-foreground mb-2">Scan & Pay via any UPI App</p>
-                      <img 
-                        src={paymentQr} 
-                        alt="Payment QR Code" 
-                        className="w-40 h-40 rounded-lg border border-border shadow-sm mb-3"
-                      />
-                      {trip.booking?.upi && (
-                        <p className="font-mono text-sm text-primary font-bold">{trip.booking.upi}</p>
-                      )}
-                      <p className="text-sm text-foreground font-medium mt-1">
-                        Pay ₹{totalAdvance.toLocaleString()} as advance
+                      <div className="bg-white p-3 rounded-lg shadow-sm mb-3">
+                        <QRCodeSVG
+                          value={generateUpiQrString({
+                            amount: totalAdvance,
+                            transactionNote: `GoBhraman ${trip.tripName}`,
+                          })}
+                          size={180}
+                          level="M"
+                          includeMargin={true}
+                        />
+                      </div>
+                      <p className="font-mono text-sm text-primary font-bold">{getMerchantUpiId()}</p>
+                      <p className="text-lg text-foreground font-semibold mt-2">
+                        Pay ₹{totalAdvance.toLocaleString()}
                       </p>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="flex items-center gap-3 my-4">
-                      <div className="flex-1 h-px bg-border" />
-                      <span className="text-xs text-muted-foreground">OR</span>
-                      <div className="flex-1 h-px bg-border" />
-                    </div>
-
-                    {/* UPI ID Collect Section */}
-                    <div className="space-y-3">
-                      <Label htmlFor="userUpiId" className="text-sm font-medium text-card-foreground">
-                        Enter your UPI ID (to receive payment request)
-                      </Label>
-                      <Input
-                        id="userUpiId"
-                        value={userUpiId}
-                        onChange={(e) => setUserUpiId(e.target.value)}
-                        placeholder="yourname@upi"
-                        className="text-sm font-mono"
-                      />
-                      {userUpiId && !isValidUpiId(userUpiId) && (
-                        <p className="text-xs text-destructive">
-                          Please enter a valid UPI ID (e.g., yourname@upi, yourname@okaxis, yourname@ybl)
-                        </p>
-                      )}
-                      <Button 
-                        type="button" 
-                        className="w-full"
-                        onClick={handleUpiPayment}
-                      >
-                        <Smartphone className="w-4 h-4 mr-2" />
-                        Pay ₹{totalAdvance.toLocaleString()} via UPI
-                      </Button>
-                      <p className="text-xs text-center text-muted-foreground">
-                        You will receive a payment request in your UPI app (Google Pay, PhonePe, Paytm, BHIM)
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Scan QR with Google Pay, PhonePe, Paytm or any UPI app
                       </p>
                     </div>
 
