@@ -1,54 +1,60 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, XCircle, Clock, Eye, Search, Filter, Users, Phone, Calendar, Wallet, UserCheck, PhoneCall, XOctagon, MessageCircle, Layers, MapPin, Edit, Trash2 } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Eye, Search, Filter, Users, Phone, Calendar, Wallet, UserCheck, PhoneCall, XOctagon, MessageCircle, Layers, MapPin, Image, AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import AdminStats from "@/components/admin/AdminStats";
 import BatchManagement from "@/components/admin/BatchManagement";
 import TripManagement from "@/components/admin/TripManagement";
-import LeadsManagement from "@/components/admin/LeadsManagement";
-import { openWhatsAppAdvanceVerified, openWhatsAppFullyPaid, openWhatsAppReminder, openWhatsAppCustom } from "@/lib/whatsapp";
+import { 
+  openWhatsAppAdvanceVerified, 
+  openWhatsAppFullyPaid,
+  getWhatsAppUserLink,
+  BookingDetails 
+} from "@/lib/whatsapp";
 
 interface Booking {
   id: string;
+  user_id: string | null;
   trip_id: string;
-  trip_name: string;
+  batch_id: string | null;
   full_name: string;
   email: string;
   phone: string;
-  pickup_location: string;
+  pickup_location: string | null;
   num_travelers: number;
-  travel_date: string | null;
-  amount: number;
-  advance_amount: number | null;
-  remaining_amount: number | null;
-  payment_status: string | null;
-  batch_id: string | null;
-  upi_transaction_id: string | null;
-  payment_screenshot_url: string | null;
-  status: string;
-  admin_notes: string | null;
+  total_amount: number;
+  advance_paid: number;
+  payment_status: string;
+  booking_status: string;
+  notes: string | null;
   created_at: string;
+  updated_at: string;
+  advance_screenshot_url: string | null;
+  remaining_screenshot_url: string | null;
+  remaining_payment_status: string | null;
+  remaining_payment_uploaded_at: string | null;
+  rejection_reason: string | null;
 }
 
 interface InterestedUser {
   id: string;
   user_id: string | null;
-  name: string;
-  mobile: string;
   trip_id: string;
-  trip_name: string;
-  preferred_date: string;
-  submitted_at: string;
-  status: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  preferred_month: string | null;
+  message: string | null;
+  created_at: string;
 }
 
 interface Batch {
@@ -61,8 +67,6 @@ interface Batch {
   seats_booked: number;
   status: string;
 }
-
-const ADVANCE_AMOUNT = 2000;
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -78,30 +82,14 @@ const Admin = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
   const [leadSearchTerm, setLeadSearchTerm] = useState("");
-  const [leadStatusFilter, setLeadStatusFilter] = useState("all");
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
-
-  // Fetch signed URL when a booking with screenshot is selected
-  useEffect(() => {
-    const fetchSignedUrl = async () => {
-      if (selectedBooking?.payment_screenshot_url) {
-        const { data, error } = await supabase.storage
-          .from('payment-screenshots')
-          .createSignedUrl(selectedBooking.payment_screenshot_url, 3600); // 1 hour expiry
-        
-        if (!error && data) {
-          setScreenshotUrl(data.signedUrl);
-        } else {
-          setScreenshotUrl(null);
-        }
-      } else {
-        setScreenshotUrl(null);
-      }
-    };
-    
-    fetchSignedUrl();
-  }, [selectedBooking]);
+  const [advanceScreenshotUrl, setAdvanceScreenshotUrl] = useState<string | null>(null);
+  const [remainingScreenshotUrl, setRemainingScreenshotUrl] = useState<string | null>(null);
+  const [loadingScreenshots, setLoadingScreenshots] = useState(false);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [processingAction, setProcessingAction] = useState(false);
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
@@ -130,12 +118,12 @@ const Admin = () => {
           b.full_name.toLowerCase().includes(term) ||
           b.email.toLowerCase().includes(term) ||
           b.phone.includes(term) ||
-          b.trip_name.toLowerCase().includes(term)
+          b.trip_id.toLowerCase().includes(term)
       );
     }
     
     if (statusFilter !== "all") {
-      filtered = filtered.filter((b) => b.status === statusFilter);
+      filtered = filtered.filter((b) => b.booking_status === statusFilter);
     }
 
     if (paymentStatusFilter !== "all") {
@@ -152,23 +140,60 @@ const Admin = () => {
       const term = leadSearchTerm.toLowerCase();
       filtered = filtered.filter(
         (u) =>
-          u.name.toLowerCase().includes(term) ||
-          u.mobile.includes(term) ||
-          u.trip_name.toLowerCase().includes(term)
+          u.full_name.toLowerCase().includes(term) ||
+          u.phone.includes(term) ||
+          u.trip_id.toLowerCase().includes(term)
       );
     }
     
-    if (leadStatusFilter !== "all") {
-      filtered = filtered.filter((u) => u.status === leadStatusFilter);
-    }
-    
     setFilteredInterested(filtered);
-  }, [interestedUsers, leadSearchTerm, leadStatusFilter]);
+  }, [interestedUsers, leadSearchTerm]);
+
+  // Fetch screenshot URLs when booking is selected
+  useEffect(() => {
+    const fetchScreenshots = async () => {
+      if (!selectedBooking) {
+        setAdvanceScreenshotUrl(null);
+        setRemainingScreenshotUrl(null);
+        return;
+      }
+
+      setLoadingScreenshots(true);
+      
+      try {
+        // Fetch advance screenshot
+        if (selectedBooking.advance_screenshot_url) {
+          const { data } = await supabase.storage
+            .from('payment-screenshots')
+            .createSignedUrl(selectedBooking.advance_screenshot_url, 3600);
+          if (data?.signedUrl) {
+            setAdvanceScreenshotUrl(data.signedUrl);
+          }
+        }
+
+        // Fetch remaining payment screenshot
+        if (selectedBooking.remaining_screenshot_url) {
+          const { data } = await supabase.storage
+            .from('payment-screenshots')
+            .createSignedUrl(selectedBooking.remaining_screenshot_url, 3600);
+          if (data?.signedUrl) {
+            setRemainingScreenshotUrl(data.signedUrl);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching screenshots:', error);
+      } finally {
+        setLoadingScreenshots(false);
+      }
+    };
+
+    fetchScreenshots();
+  }, [selectedBooking]);
 
   const fetchData = async () => {
     const [bookingsRes, interestedRes, batchesRes] = await Promise.all([
       supabase.from("bookings").select("*").order("created_at", { ascending: false }),
-      supabase.from("interested_users").select("*").order("submitted_at", { ascending: false }),
+      supabase.from("interested_users").select("*").order("created_at", { ascending: false }),
       supabase.from("batches").select("*").order("start_date", { ascending: true }),
     ]);
 
@@ -199,8 +224,8 @@ const Admin = () => {
     setLoadingData(false);
   };
 
-  const updateBookingStatus = async (bookingId: string, status: string, paymentStatus?: string) => {
-    const updateData: any = { status };
+  const updateBookingStatus = async (bookingId: string, bookingStatus: string, paymentStatus?: string) => {
+    const updateData: Record<string, string> = { booking_status: bookingStatus };
     if (paymentStatus) {
       updateData.payment_status = paymentStatus;
     }
@@ -219,69 +244,120 @@ const Admin = () => {
     } else {
       toast({
         title: "Success",
-        description: `Booking ${status === "confirmed" ? "confirmed" : "cancelled"}`,
+        description: `Booking ${bookingStatus === "confirmed" ? "confirmed" : "updated"}`,
       });
       fetchData();
       setSelectedBooking(null);
     }
   };
 
-  const verifyAdvancePayment = async (booking: Booking) => {
-    await updateBookingStatus(booking.id, "confirmed", "advance_verified");
-    
-    // Open WhatsApp notification
-    openWhatsAppAdvanceVerified(booking.phone, {
-      userName: booking.full_name,
-      tripName: booking.trip_name,
-      advanceAmount: booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers,
-      remainingAmount: booking.remaining_amount || booking.amount - (ADVANCE_AMOUNT * booking.num_travelers),
-      bookingId: booking.id.slice(0, 8).toUpperCase(),
-    });
-  };
+  // Verify remaining payment
+  const verifyRemainingPayment = async (booking: Booking) => {
+    if (!user) return;
+    setProcessingAction(true);
 
-  const markFullyPaid = async (booking: Booking) => {
-    const { error } = await supabase
-      .from("bookings")
-      .update({ payment_status: "fully_paid", remaining_amount: 0 })
-      .eq("id", booking.id);
+    try {
+      const { error } = await supabase
+        .from("bookings")
+        .update({
+          remaining_payment_status: "verified",
+          remaining_payment_verified_at: new Date().toISOString(),
+          verified_by_admin_id: user.id,
+          payment_status: "fully_paid",
+          rejection_reason: null
+        })
+        .eq("id", booking.id);
 
-    if (error) {
-      toast({ title: "Error", description: "Failed to update payment status", variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Marked as fully paid" });
-      
-      // Open WhatsApp notification
-      openWhatsAppFullyPaid(booking.phone, {
+      if (error) throw error;
+
+      toast({
+        title: "Payment Verified",
+        description: "Remaining payment has been verified. Booking is now fully paid.",
+      });
+
+      // Open WhatsApp to notify user
+      const bookingDetails: BookingDetails = {
         userName: booking.full_name,
-        tripName: booking.trip_name,
-        advanceAmount: booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers,
-        remainingAmount: 0,
-        bookingId: booking.id.slice(0, 8).toUpperCase(),
-      });
-      
+        tripName: booking.trip_id,
+        advanceAmount: booking.advance_paid,
+        remainingAmount: booking.total_amount - booking.advance_paid,
+        bookingId: booking.id,
+        phone: booking.phone
+      };
+      openWhatsAppFullyPaid(booking.phone, bookingDetails);
+
       fetchData();
       setSelectedBooking(null);
-    }
-  };
-
-  const updateLeadStatus = async (leadId: string, status: string) => {
-    const { error } = await supabase
-      .from("interested_users")
-      .update({ status })
-      .eq("id", leadId);
-
-    if (error) {
+    } catch (error) {
+      console.error('Error verifying payment:', error);
       toast({
         title: "Error",
-        description: "Failed to update lead status",
+        description: "Failed to verify payment",
         variant: "destructive",
       });
-    } else {
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  // Reject remaining payment
+  const rejectRemainingPayment = async (booking: Booking, reason: string) => {
+    if (!reason.trim()) {
       toast({
-        title: "Success",
-        description: `Lead marked as ${status}`,
+        title: "Error",
+        description: "Please provide a rejection reason",
+        variant: "destructive",
       });
+      return;
+    }
+
+    setProcessingAction(true);
+
+    try {
+      const { error } = await supabase
+        .from("bookings")
+        .update({
+          remaining_payment_status: "rejected",
+          rejection_reason: reason,
+          payment_status: "advance_verified" // Revert to advance_verified so user can re-upload
+        })
+        .eq("id", booking.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Payment Rejected",
+        description: "User has been notified to re-upload payment proof.",
+      });
+
+      // Open WhatsApp to notify user about rejection
+      const message = `❌ Payment Verification Failed
+
+Hi ${booking.full_name},
+
+The payment proof uploaded for *${booking.trip_id}* could not be verified.
+
+Reason: ${reason}
+
+Please re-upload the correct payment proof from your dashboard.
+
+– Team GoBhraman`;
+
+      window.open(getWhatsAppUserLink(booking.phone, message), '_blank');
+
       fetchData();
+      setSelectedBooking(null);
+      setShowRejectModal(false);
+      setRejectionReason("");
+    } catch (error) {
+      console.error('Error rejecting payment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to reject payment",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessingAction(false);
     }
   };
 
@@ -296,41 +372,38 @@ const Admin = () => {
     }
   };
 
-  const getLeadStatusBadge = (status: string) => {
-    switch (status) {
-      case "contacted":
-        return <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/30">Contacted</Badge>;
-      case "converted":
-        return <Badge className="bg-green-500/20 text-green-600 border-green-500/30">Converted</Badge>;
-      case "not_interested":
-        return <Badge className="bg-red-500/20 text-red-600 border-red-500/30">Not Interested</Badge>;
-      default:
-        return <Badge className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30">Interested</Badge>;
-    }
-  };
-
-  const getPaymentStatusBadge = (paymentStatus: string | null) => {
+  const getPaymentStatusBadge = (paymentStatus: string) => {
     switch (paymentStatus) {
       case "fully_paid":
         return <Badge className="bg-green-500/20 text-green-600 border-green-500/30">Fully Paid</Badge>;
+      case "balance_verified":
+        return <Badge className="bg-green-500/20 text-green-600 border-green-500/30">Balance Verified</Badge>;
+      case "balance_pending":
+        return <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/30">Balance Pending</Badge>;
       case "advance_verified":
-        return <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/30">Advance Verified</Badge>;
+        return <Badge className="bg-teal-500/20 text-teal-600 border-teal-500/30">Advance Verified</Badge>;
+      case "pending_advance":
+        return <Badge className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30">Pending Advance</Badge>;
+      case "paid":
+        return <Badge className="bg-green-500/20 text-green-600 border-green-500/30">Paid</Badge>;
       case "partial":
         return <Badge className="bg-amber-500/20 text-amber-600 border-amber-500/30">Partial</Badge>;
       default:
-        return <Badge className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30">Pending Advance</Badge>;
+        return <Badge className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30">Pending</Badge>;
     }
   };
 
-  const getPaymentStatus = (booking: Booking) => {
-    if (booking.payment_status === "fully_paid") return "Completed";
-    if (booking.payment_status === "advance_verified") return "Advance Verified";
-    const advancePaid = booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers;
-    const balanceAmount = booking.remaining_amount || booking.amount - advancePaid;
-    if (booking.status === "confirmed" && balanceAmount <= 0) {
-      return "Completed";
+  const getRemainingPaymentStatusBadge = (status: string | null) => {
+    switch (status) {
+      case "uploaded":
+        return <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/30">Uploaded - Awaiting Review</Badge>;
+      case "verified":
+        return <Badge className="bg-green-500/20 text-green-600 border-green-500/30">Verified</Badge>;
+      case "rejected":
+        return <Badge className="bg-red-500/20 text-red-600 border-red-500/30">Rejected</Badge>;
+      default:
+        return <Badge className="bg-gray-500/20 text-gray-600 border-gray-500/30">Pending</Badge>;
     }
-    return "Partial";
   };
 
   const formatDate = (dateString: string) => {
@@ -343,13 +416,10 @@ const Admin = () => {
     });
   };
 
-  const formatDateOnly = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  };
+  // Get bookings pending remaining payment verification
+  const pendingRemainingVerification = bookings.filter(
+    b => b.remaining_payment_status === "uploaded" && b.payment_status === "balance_pending"
+  );
 
   if (loading || loadingData) {
     return (
@@ -368,13 +438,44 @@ const Admin = () => {
       <main className="pt-24 pb-16 px-4">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="font-serif text-3xl font-bold text-foreground">Admin Dashboard</h1>
-            <p className="text-muted-foreground mt-2">Manage bookings, leads, and payments</p>
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="font-serif text-3xl font-bold text-foreground">Admin Dashboard</h1>
+              <p className="text-muted-foreground mt-2">Manage bookings, leads, and trips</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={fetchData}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
           </div>
 
+          {/* Pending Remaining Payment Verification Alert */}
+          {pendingRemainingVerification.length > 0 && (
+            <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                  <Wallet className="w-5 h-5 text-blue-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">
+                    {pendingRemainingVerification.length} Remaining Payment(s) Awaiting Verification
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Users have uploaded payment screenshots that need your review.
+                  </p>
+                </div>
+                <Button 
+                  size="sm" 
+                  onClick={() => setPaymentStatusFilter("balance_pending")}
+                >
+                  Review Now
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
             <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
@@ -382,7 +483,7 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">
-                    {bookings.filter((b) => b.status === "pending").length}
+                    {bookings.filter((b) => b.booking_status === "pending").length}
                   </p>
                   <p className="text-sm text-muted-foreground">Pending</p>
                 </div>
@@ -395,9 +496,22 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">
-                    {bookings.filter((b) => b.status === "confirmed").length}
+                    {bookings.filter((b) => b.booking_status === "confirmed").length}
                   </p>
                   <p className="text-sm text-muted-foreground">Confirmed</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                  <Wallet className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {pendingRemainingVerification.length}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Balance Review</p>
                 </div>
               </div>
             </div>
@@ -408,22 +522,22 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">
-                    {bookings.filter((b) => getPaymentStatus(b) === "Partial" && b.status !== "cancelled").length}
+                    {bookings.filter((b) => b.payment_status === "fully_paid").length}
                   </p>
-                  <p className="text-sm text-muted-foreground">Partial Paid</p>
+                  <p className="text-sm text-muted-foreground">Fully Paid</p>
                 </div>
               </div>
             </div>
             <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                  <Users className="w-5 h-5 text-blue-500" />
+                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <Users className="w-5 h-5 text-purple-500" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">
-                    {interestedUsers.filter((u) => u.status === "interested").length}
+                    {interestedUsers.length}
                   </p>
-                  <p className="text-sm text-muted-foreground">New Leads</p>
+                  <p className="text-sm text-muted-foreground">Leads</p>
                 </div>
               </div>
             </div>
@@ -434,7 +548,7 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{bookings.length}</p>
-                  <p className="text-sm text-muted-foreground">Total Bookings</p>
+                  <p className="text-sm text-muted-foreground">Total</p>
                 </div>
               </div>
             </div>
@@ -454,6 +568,9 @@ const Admin = () => {
               <TabsTrigger value="bookings" className="gap-2">
                 <Calendar className="w-4 h-4" />
                 Bookings
+                {pendingRemainingVerification.length > 0 && (
+                  <Badge className="ml-1 bg-blue-500 text-white">{pendingRemainingVerification.length}</Badge>
+                )}
               </TabsTrigger>
               <TabsTrigger value="leads" className="gap-2">
                 <Users className="w-4 h-4" />
@@ -461,7 +578,7 @@ const Admin = () => {
               </TabsTrigger>
             </TabsList>
 
-            {/* Trips Tab - NEW */}
+            {/* Trips Tab */}
             <TabsContent value="trips">
               <TripManagement onRefresh={fetchData} />
             </TabsContent>
@@ -495,6 +612,18 @@ const Admin = () => {
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select value={paymentStatusFilter} onValueChange={setPaymentStatusFilter}>
+                  <SelectTrigger className="w-full md:w-48">
+                    <SelectValue placeholder="Filter by payment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Payments</SelectItem>
+                    <SelectItem value="pending_advance">Pending Advance</SelectItem>
+                    <SelectItem value="advance_verified">Advance Verified</SelectItem>
+                    <SelectItem value="balance_pending">Balance Pending</SelectItem>
+                    <SelectItem value="fully_paid">Fully Paid</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Bookings Table */}
@@ -507,7 +636,6 @@ const Admin = () => {
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Trip</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Total</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Advance</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Balance</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Payment</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Status</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Actions</th>
@@ -516,66 +644,58 @@ const Admin = () => {
                     <tbody className="divide-y divide-border">
                       {filteredBookings.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                          <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                             No bookings found
                           </td>
                         </tr>
                       ) : (
-                        filteredBookings.map((booking) => {
-                          const advancePaid = ADVANCE_AMOUNT * booking.num_travelers;
-                          const balanceAmount = Math.max(0, booking.amount - advancePaid);
-                          const paymentStatus = getPaymentStatus(booking);
-                          
-                          return (
-                            <tr key={booking.id} className="hover:bg-muted/30 transition-colors">
-                              <td className="px-4 py-3">
-                                <div>
-                                  <p className="font-medium text-foreground">{booking.full_name}</p>
-                                  <p className="text-sm text-muted-foreground">{booking.phone}</p>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div>
-                                  <p className="font-medium text-foreground">{booking.trip_name}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {booking.num_travelers} traveler(s)
-                                  </p>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <p className="font-semibold text-foreground">₹{booking.amount.toLocaleString()}</p>
-                              </td>
-                              <td className="px-4 py-3">
-                                <p className="font-medium text-green-600">₹{advancePaid.toLocaleString()}</p>
-                              </td>
-                              <td className="px-4 py-3">
-                                <p className={`font-medium ${balanceAmount > 0 ? 'text-amber-600' : 'text-green-600'}`}>
-                                  ₹{balanceAmount.toLocaleString()}
+                        filteredBookings.map((booking) => (
+                          <tr key={booking.id} className={`hover:bg-muted/30 transition-colors ${
+                            booking.remaining_payment_status === "uploaded" ? "bg-blue-500/5" : ""
+                          }`}>
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium text-foreground">{booking.full_name}</p>
+                                <p className="text-sm text-muted-foreground">{booking.phone}</p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium text-foreground">{booking.trip_id}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {booking.num_travelers} traveler(s)
                                 </p>
-                              </td>
-                              <td className="px-4 py-3">
-                                <Badge 
-                                  className={paymentStatus === "Completed" 
-                                    ? "bg-green-500/20 text-green-600 border-green-500/30" 
-                                    : "bg-amber-500/20 text-amber-600 border-amber-500/30"}
-                                >
-                                  {paymentStatus}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3">{getStatusBadge(booking.status)}</td>
-                              <td className="px-4 py-3">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setSelectedBooking(booking)}
-                                >
-                                  <Eye className="w-4 h-4 mr-1" />
-                                  View
-                                </Button>
-                              </td>
-                            </tr>
-                          );
-                        })
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-semibold text-foreground">₹{booking.total_amount.toLocaleString()}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-green-600">₹{booking.advance_paid.toLocaleString()}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-1">
+                                {getPaymentStatusBadge(booking.payment_status)}
+                                {booking.remaining_payment_status === "uploaded" && (
+                                  <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/30 text-xs">
+                                    Balance Screenshot
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">{getStatusBadge(booking.booking_status)}</td>
+                            <td className="px-4 py-3">
+                              <Button
+                                variant={booking.remaining_payment_status === "uploaded" ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setSelectedBooking(booking)}
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                {booking.remaining_payment_status === "uploaded" ? "Review" : "View"}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
                       )}
                     </tbody>
                   </table>
@@ -583,31 +703,19 @@ const Admin = () => {
               </div>
             </TabsContent>
 
-            {/* Interested Leads Tab */}
+            {/* Leads Tab */}
             <TabsContent value="leads" className="space-y-4">
               {/* Filters */}
               <div className="flex flex-col md:flex-row gap-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search by name, mobile, or trip..."
+                    placeholder="Search by name, phone, or trip..."
                     value={leadSearchTerm}
                     onChange={(e) => setLeadSearchTerm(e.target.value)}
                     className="pl-10"
                   />
                 </div>
-                <Select value={leadStatusFilter} onValueChange={setLeadStatusFilter}>
-                  <SelectTrigger className="w-full md:w-48">
-                    <SelectValue placeholder="Filter by status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="interested">Interested</SelectItem>
-                    <SelectItem value="contacted">Contacted</SelectItem>
-                    <SelectItem value="converted">Converted</SelectItem>
-                    <SelectItem value="not_interested">Not Interested</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               {/* Leads Table */}
@@ -617,19 +725,17 @@ const Admin = () => {
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Name</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Mobile</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Contact</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Trip</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Preferred Date</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Preferred Month</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Submitted</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">User Type</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Status</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {filteredInterested.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                          <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                             No leads found
                           </td>
                         </tr>
@@ -637,62 +743,46 @@ const Admin = () => {
                         filteredInterested.map((lead) => (
                           <tr key={lead.id} className="hover:bg-muted/30 transition-colors">
                             <td className="px-4 py-3">
-                              <p className="font-medium text-foreground">{lead.name}</p>
+                              <p className="font-medium text-foreground">{lead.full_name}</p>
                             </td>
                             <td className="px-4 py-3">
-                              <a 
-                                href={`tel:${lead.mobile}`} 
-                                className="flex items-center gap-1 text-primary hover:underline"
-                              >
-                                <Phone className="w-3 h-3" />
-                                {lead.mobile}
-                              </a>
+                              <div>
+                                <a 
+                                  href={`tel:${lead.phone}`} 
+                                  className="flex items-center gap-1 text-primary hover:underline"
+                                >
+                                  <Phone className="w-3 h-3" />
+                                  {lead.phone}
+                                </a>
+                                <p className="text-sm text-muted-foreground">{lead.email}</p>
+                              </div>
                             </td>
                             <td className="px-4 py-3">
-                              <p className="font-medium text-foreground">{lead.trip_name}</p>
+                              <p className="font-medium text-foreground">{lead.trip_id}</p>
                             </td>
                             <td className="px-4 py-3">
-                              <p className="text-foreground">{formatDateOnly(lead.preferred_date)}</p>
+                              <p className="text-foreground">{lead.preferred_month || "Not specified"}</p>
                             </td>
                             <td className="px-4 py-3">
-                              <p className="text-sm text-muted-foreground">{formatDate(lead.submitted_at)}</p>
+                              <p className="text-sm text-muted-foreground">{formatDate(lead.created_at)}</p>
                             </td>
-                            <td className="px-4 py-3">
-                              <Badge variant="outline">
-                                {lead.user_id ? "Registered" : "Guest"}
-                              </Badge>
-                            </td>
-                            <td className="px-4 py-3">{getLeadStatusBadge(lead.status)}</td>
                             <td className="px-4 py-3">
                               <div className="flex gap-1">
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => updateLeadStatus(lead.id, "contacted")}
-                                  disabled={lead.status === "contacted"}
-                                  title="Mark as Contacted"
+                                  onClick={() => window.open(`https://wa.me/${lead.phone}`, '_blank')}
+                                  title="Contact via WhatsApp"
+                                >
+                                  <MessageCircle className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => window.open(`tel:${lead.phone}`, '_blank')}
+                                  title="Call"
                                 >
                                   <PhoneCall className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => updateLeadStatus(lead.id, "converted")}
-                                  disabled={lead.status === "converted"}
-                                  className="text-green-600 hover:text-green-700"
-                                  title="Mark as Converted"
-                                >
-                                  <UserCheck className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => updateLeadStatus(lead.id, "not_interested")}
-                                  disabled={lead.status === "not_interested"}
-                                  className="text-red-600 hover:text-red-700"
-                                  title="Mark as Not Interested"
-                                >
-                                  <XOctagon className="w-4 h-4" />
                                 </Button>
                               </div>
                             </td>
@@ -713,13 +803,21 @@ const Admin = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-foreground/60 backdrop-blur-sm"
-            onClick={() => setSelectedBooking(null)}
+            onClick={() => {
+              setSelectedBooking(null);
+              setShowRejectModal(false);
+              setRejectionReason("");
+            }}
           />
-          <div className="relative w-full max-w-2xl bg-card rounded-2xl shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto">
+          <div className="relative w-full max-w-3xl bg-card rounded-2xl shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-border flex items-center justify-between">
               <h2 className="font-serif text-xl font-bold text-card-foreground">Booking Details</h2>
               <button
-                onClick={() => setSelectedBooking(null)}
+                onClick={() => {
+                  setSelectedBooking(null);
+                  setShowRejectModal(false);
+                  setRejectionReason("");
+                }}
                 className="p-2 rounded-full hover:bg-muted transition-colors"
               >
                 <XCircle className="w-5 h-5 text-muted-foreground" />
@@ -741,7 +839,7 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Trip</p>
-                  <p className="font-medium text-foreground">{selectedBooking.trip_name}</p>
+                  <p className="font-medium text-foreground">{selectedBooking.trip_id}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Travelers</p>
@@ -749,7 +847,7 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Pickup Location</p>
-                  <p className="font-medium text-foreground capitalize">{selectedBooking.pickup_location}</p>
+                  <p className="font-medium text-foreground capitalize">{selectedBooking.pickup_location || "Not specified"}</p>
                 </div>
               </div>
 
@@ -762,43 +860,141 @@ const Admin = () => {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Total Amount</p>
-                    <p className="font-bold text-foreground text-lg">₹{selectedBooking.amount.toLocaleString()}</p>
+                    <p className="font-bold text-foreground text-lg">₹{selectedBooking.total_amount.toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Advance Paid</p>
-                    <p className="font-bold text-green-600 text-lg">
-                      ₹{(ADVANCE_AMOUNT * selectedBooking.num_travelers).toLocaleString()}
-                    </p>
+                    <p className="font-bold text-green-600 text-lg">₹{selectedBooking.advance_paid.toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Balance Amount</p>
                     <p className="font-bold text-amber-600 text-lg">
-                      ₹{Math.max(0, selectedBooking.amount - (ADVANCE_AMOUNT * selectedBooking.num_travelers)).toLocaleString()}
+                      ₹{Math.max(0, selectedBooking.total_amount - selectedBooking.advance_paid).toLocaleString()}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Payment Status</p>
-                    <Badge 
-                      className={getPaymentStatus(selectedBooking) === "Completed" 
-                        ? "bg-green-500/20 text-green-600 border-green-500/30" 
-                        : "bg-amber-500/20 text-amber-600 border-amber-500/30"}
-                    >
-                      {getPaymentStatus(selectedBooking)}
-                    </Badge>
+                    {getPaymentStatusBadge(selectedBooking.payment_status)}
                   </div>
                 </div>
-                {selectedBooking.upi_transaction_id && (
+
+                {/* Remaining Payment Status */}
+                {selectedBooking.remaining_payment_status && selectedBooking.remaining_payment_status !== "pending" && (
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Remaining Payment Status</p>
+                        {getRemainingPaymentStatusBadge(selectedBooking.remaining_payment_status)}
+                      </div>
+                      {selectedBooking.remaining_payment_uploaded_at && (
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">Uploaded At</p>
+                          <p className="text-sm font-medium">{formatDate(selectedBooking.remaining_payment_uploaded_at)}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {selectedBooking.notes && (
                   <div className="mt-3 pt-3 border-t border-border">
-                    <p className="text-sm text-muted-foreground">UPI Transaction ID</p>
-                    <p className="font-medium text-foreground">{selectedBooking.upi_transaction_id}</p>
+                    <p className="text-sm text-muted-foreground">Notes</p>
+                    <p className="font-medium text-foreground">{selectedBooking.notes}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Screenshots Section */}
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                  <Image className="w-4 h-4 text-primary" />
+                  Payment Screenshots
+                </h4>
+                
+                {loadingScreenshots ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Advance Payment Screenshot */}
+                    <div className="border border-border rounded-lg p-3">
+                      <p className="text-sm font-medium text-foreground mb-2">Advance Payment</p>
+                      {advanceScreenshotUrl ? (
+                        <div className="space-y-2">
+                          <img 
+                            src={advanceScreenshotUrl} 
+                            alt="Advance Payment Screenshot" 
+                            className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => setViewingImage(advanceScreenshotUrl)}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => window.open(advanceScreenshotUrl, '_blank')}
+                          >
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            View Full Image
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-32 bg-muted rounded-lg border-2 border-dashed border-border">
+                          <div className="text-center">
+                            <AlertTriangle className="w-6 h-6 text-amber-500 mx-auto mb-1" />
+                            <p className="text-sm text-muted-foreground">No screenshot uploaded</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Remaining Payment Screenshot */}
+                    <div className="border border-border rounded-lg p-3">
+                      <p className="text-sm font-medium text-foreground mb-2">Remaining Payment</p>
+                      {remainingScreenshotUrl ? (
+                        <div className="space-y-2">
+                          <img 
+                            src={remainingScreenshotUrl} 
+                            alt="Remaining Payment Screenshot" 
+                            className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => setViewingImage(remainingScreenshotUrl)}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => window.open(remainingScreenshotUrl, '_blank')}
+                          >
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            View Full Image
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-32 bg-muted rounded-lg border-2 border-dashed border-border">
+                          <div className="text-center">
+                            {selectedBooking.payment_status === "balance_pending" || selectedBooking.remaining_payment_status === "uploaded" ? (
+                              <>
+                                <Clock className="w-6 h-6 text-blue-500 mx-auto mb-1" />
+                                <p className="text-sm text-muted-foreground">Awaiting upload</p>
+                              </>
+                            ) : (
+                              <>
+                                <Image className="w-6 h-6 text-muted-foreground mx-auto mb-1" />
+                                <p className="text-sm text-muted-foreground">Not applicable yet</p>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  {getStatusBadge(selectedBooking.status)}
+                  <p className="text-sm text-muted-foreground">Booking Status</p>
+                  {getStatusBadge(selectedBooking.booking_status)}
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Booked On</p>
@@ -806,80 +1002,232 @@ const Admin = () => {
                 </div>
               </div>
 
-              {selectedBooking.payment_screenshot_url && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">Payment Screenshot</p>
-                  {screenshotUrl ? (
-                    <a
-                      href={screenshotUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block"
+              {/* Rejection Reason Input */}
+              {showRejectModal && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                  <h4 className="font-medium text-red-700 dark:text-red-400 mb-2">Reject Remaining Payment</h4>
+                  <p className="text-sm text-red-600 dark:text-red-300 mb-3">
+                    Please provide a reason for rejection. This will be shown to the user.
+                  </p>
+                  <Textarea
+                    placeholder="Enter rejection reason..."
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    className="mb-3"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      onClick={() => rejectRemainingPayment(selectedBooking, rejectionReason)}
+                      disabled={!rejectionReason.trim() || processingAction}
                     >
-                      <img
-                        src={screenshotUrl}
-                        alt="Payment Screenshot"
-                        className="max-w-full h-auto max-h-64 rounded-lg border border-border"
-                      />
-                    </a>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">Loading screenshot...</div>
-                  )}
+                      {processingAction ? "Processing..." : "Confirm Rejection"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowRejectModal(false);
+                        setRejectionReason("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               )}
 
-              {/* Action Buttons */}
-              <div className="space-y-3 pt-4 border-t border-border">
-                {selectedBooking.status === "pending" && (
-                  <div className="flex gap-3">
+              {/* Admin Action Buttons */}
+              <div className="flex flex-wrap gap-3 pt-4">
+                {/* Pending Advance - Verify Advance Payment */}
+                {selectedBooking.booking_status === "pending" && selectedBooking.payment_status === "pending_advance" && (
+                  <>
                     <Button
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      onClick={() => verifyAdvancePayment(selectedBooking)}
+                      onClick={() => {
+                        if (!advanceScreenshotUrl) {
+                          toast({
+                            title: "Warning",
+                            description: "No advance payment screenshot uploaded. Please verify payment manually.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        updateBookingStatus(selectedBooking.id, "confirmed", "advance_verified");
+                      }}
+                      className="flex-1"
+                      disabled={!advanceScreenshotUrl}
                     >
                       <CheckCircle className="w-4 h-4 mr-2" />
-                      Verify & Confirm
+                      Verify Advance & Confirm
                     </Button>
                     <Button
                       variant="destructive"
-                      className="flex-1"
                       onClick={() => updateBookingStatus(selectedBooking.id, "cancelled")}
+                      className="flex-1"
                     >
                       <XCircle className="w-4 h-4 mr-2" />
                       Reject
                     </Button>
+                  </>
+                )}
+
+                {/* Legacy pending status */}
+                {selectedBooking.booking_status === "pending" && selectedBooking.payment_status === "pending" && (
+                  <>
+                    <Button
+                      onClick={() => updateBookingStatus(selectedBooking.id, "confirmed", "advance_verified")}
+                      className="flex-1"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Confirm Booking
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => updateBookingStatus(selectedBooking.id, "cancelled")}
+                      className="flex-1"
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Cancel
+                    </Button>
+                  </>
+                )}
+
+                {/* Advance Verified - Wait for balance or mark fully paid */}
+                {selectedBooking.booking_status === "confirmed" && 
+                 selectedBooking.payment_status === "advance_verified" && 
+                 selectedBooking.remaining_payment_status !== "uploaded" && (
+                  <>
+                    <Button
+                      onClick={() => updateBookingStatus(selectedBooking.id, "confirmed", "balance_pending")}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      <Clock className="w-4 h-4 mr-2" />
+                      Request Balance Payment
+                    </Button>
+                    <Button
+                      onClick={() => updateBookingStatus(selectedBooking.id, "confirmed", "fully_paid")}
+                      className="flex-1"
+                    >
+                      <Wallet className="w-4 h-4 mr-2" />
+                      Mark Fully Paid
+                    </Button>
+                  </>
+                )}
+
+                {/* Remaining Payment Uploaded - Verify or Reject */}
+                {selectedBooking.remaining_payment_status === "uploaded" && !showRejectModal && (
+                  <>
+                    <Button
+                      onClick={() => {
+                        if (!remainingScreenshotUrl) {
+                          toast({
+                            title: "Warning",
+                            description: "No remaining payment screenshot found. Cannot verify.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        verifyRemainingPayment(selectedBooking);
+                      }}
+                      className="flex-1"
+                      disabled={!remainingScreenshotUrl || processingAction}
+                    >
+                      {processingAction ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Verify & Mark Fully Paid
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowRejectModal(true)}
+                      className="flex-1"
+                      disabled={processingAction}
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Reject Payment
+                    </Button>
+                  </>
+                )}
+
+                {/* Balance Pending but no screenshot uploaded yet */}
+                {selectedBooking.booking_status === "confirmed" && 
+                 selectedBooking.payment_status === "balance_pending" && 
+                 selectedBooking.remaining_payment_status === "pending" && (
+                  <div className="w-full p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                    <p className="text-sm text-blue-700 dark:text-blue-400">
+                      Waiting for user to upload remaining payment screenshot.
+                    </p>
                   </div>
                 )}
-                
-                {selectedBooking.status === "confirmed" && selectedBooking.payment_status !== "fully_paid" && (
+
+                {/* Legacy partial status */}
+                {selectedBooking.booking_status === "confirmed" && selectedBooking.payment_status === "partial" && (
                   <Button
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                    onClick={() => markFullyPaid(selectedBooking)}
+                    onClick={() => updateBookingStatus(selectedBooking.id, "confirmed", "fully_paid")}
+                    className="flex-1"
                   >
                     <Wallet className="w-4 h-4 mr-2" />
-                    Mark Balance as Paid
+                    Mark as Fully Paid
                   </Button>
                 )}
 
-                {selectedBooking.status === "confirmed" && (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      const message = selectedBooking.payment_status === "fully_paid" 
-                        ? `Hi ${selectedBooking.full_name}, your booking for ${selectedBooking.trip_name} is fully confirmed!`
-                        : `Hi ${selectedBooking.full_name}, your advance for ${selectedBooking.trip_name} is verified. Balance: ₹${(selectedBooking.remaining_amount || 0).toLocaleString()}`;
-                      const phone = selectedBooking.phone.replace(/\D/g, '');
-                      const phoneWithCountry = phone.startsWith('91') ? phone : `91${phone}`;
-                      window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(message)}`, '_blank');
-                    }}
-                  >
-                    <MessageCircle className="w-4 h-4 mr-2" />
-                    Send WhatsApp Message
-                  </Button>
+                {/* Fully Paid */}
+                {selectedBooking.payment_status === "fully_paid" && (
+                  <div className="w-full p-3 bg-green-500/10 rounded-lg border border-green-500/20 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                    <p className="text-sm text-green-700 dark:text-green-400">
+                      This booking is fully paid and confirmed.
+                    </p>
+                  </div>
                 )}
+
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(`https://wa.me/${selectedBooking.phone}`, '_blank')}
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  WhatsApp
+                </Button>
               </div>
+
+              {/* Warning Messages */}
+              {!advanceScreenshotUrl && selectedBooking.payment_status === "pending_advance" && (
+                <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    Warning: No advance payment screenshot found. Please verify payment before confirming.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Image Viewer Modal */}
+      {viewingImage && (
+        <div 
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80"
+          onClick={() => setViewingImage(null)}
+        >
+          <img 
+            src={viewingImage} 
+            alt="Payment Screenshot" 
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
+          <button
+            onClick={() => setViewingImage(null)}
+            className="absolute top-4 right-4 p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+          >
+            <XCircle className="w-6 h-6 text-white" />
+          </button>
         </div>
       )}
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Calendar, MapPin, Users, Clock, CheckCircle, XCircle, ArrowRight, CreditCard, Wallet } from "lucide-react";
+import { Calendar, MapPin, Users, Clock, CheckCircle, XCircle, ArrowRight, CreditCard, Wallet, Upload, Image, AlertCircle, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -8,23 +8,31 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { QRCodeSVG } from "qrcode.react";
+import { generateUpiQrString, getMerchantUpiId } from "@/lib/upi";
 
 interface Booking {
   id: string;
+  user_id: string | null;
   trip_id: string;
-  trip_name: string;
-  pickup_location: string;
+  batch_id: string | null;
+  full_name: string;
+  email: string;
+  phone: string;
+  pickup_location: string | null;
   num_travelers: number;
-  travel_date: string | null;
-  amount: number;
-  advance_amount: number | null;
-  remaining_amount: number | null;
-  payment_status: string | null;
-  status: string;
+  total_amount: number;
+  advance_paid: number;
+  payment_status: string;
+  booking_status: string;
+  notes: string | null;
   created_at: string;
+  updated_at: string;
+  advance_screenshot_url: string | null;
+  remaining_screenshot_url: string | null;
+  remaining_payment_status: string | null;
+  rejection_reason: string | null;
 }
-
-const ADVANCE_AMOUNT = 2000;
 
 const MyBookings = () => {
   const navigate = useNavigate();
@@ -32,6 +40,10 @@ const MyBookings = () => {
   const { user, loading } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState<Booking | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -64,6 +76,76 @@ const MyBookings = () => {
     setLoadingBookings(false);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      setScreenshotFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setScreenshotPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadRemainingScreenshot = async (bookingId: string) => {
+    if (!screenshotFile || !user) return;
+
+    setUploadingId(bookingId);
+
+    try {
+      const fileExt = screenshotFile.name.split('.').pop();
+      const fileName = `${user.id}/remaining_${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('payment-screenshots')
+        .upload(fileName, screenshotFile);
+
+      if (uploadError) throw uploadError;
+
+      // Update booking with screenshot URL and set remaining_payment_status to 'uploaded'
+      const { error: updateError } = await supabase
+        .from("bookings")
+        .update({ 
+          remaining_screenshot_url: fileName,
+          remaining_payment_status: "uploaded",
+          remaining_payment_uploaded_at: new Date().toISOString(),
+          payment_status: "balance_pending",
+          rejection_reason: null // Clear any previous rejection reason
+        })
+        .eq("id", bookingId);
+
+      if (updateError) throw updateError;
+
+      toast({
+        title: "Success!",
+        description: "Your payment screenshot has been uploaded. We'll verify it shortly.",
+      });
+
+      setShowPaymentModal(null);
+      setScreenshotFile(null);
+      setScreenshotPreview(null);
+      fetchBookings();
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: "Failed to upload screenshot. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "confirmed":
@@ -90,21 +172,63 @@ const MyBookings = () => {
     }
   };
 
-  const getPaymentStatus = (booking: Booking) => {
-    if (booking.payment_status === "fully_paid") return "Fully Paid";
-    if (booking.payment_status === "advance_verified") return "Advance Verified";
-    const advancePaid = booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers;
-    const balanceAmount = booking.remaining_amount ?? (booking.amount - advancePaid);
-    if (booking.status === "confirmed" && balanceAmount <= 0) {
-      return "Fully Paid";
-    }
-    return "Partial";
+  const getPaymentStatusColor = (status: string) => {
+    if (status === "fully_paid" || status === "paid") return "bg-green-500/20 text-green-600 border-green-500/30";
+    if (status === "balance_pending") return "bg-blue-500/20 text-blue-600 border-blue-500/30";
+    if (status === "advance_verified" || status === "partial") return "bg-teal-500/20 text-teal-600 border-teal-500/30";
+    return "bg-amber-500/20 text-amber-600 border-amber-500/30";
   };
 
-  const getPaymentStatusColor = (status: string) => {
-    if (status === "Fully Paid") return "bg-green-500/20 text-green-600 border-green-500/30";
-    if (status === "Advance Verified") return "bg-blue-500/20 text-blue-600 border-blue-500/30";
-    return "bg-amber-500/20 text-amber-600 border-amber-500/30";
+  const getPaymentStatusLabel = (status: string) => {
+    switch (status) {
+      case "fully_paid":
+        return "Fully Paid";
+      case "balance_pending":
+        return "Balance Under Verification";
+      case "advance_verified":
+        return "Advance Verified";
+      case "pending_advance":
+        return "Advance Under Verification";
+      case "paid":
+        return "Fully Paid";
+      case "partial":
+        return "Advance Paid";
+      default:
+        return "Pending";
+    }
+  };
+
+  const getRemainingPaymentStatusBadge = (status: string | null) => {
+    switch (status) {
+      case "uploaded":
+        return (
+          <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/30">
+            <Clock className="w-3 h-3 mr-1" />
+            Awaiting Verification
+          </Badge>
+        );
+      case "verified":
+        return (
+          <Badge className="bg-green-500/20 text-green-600 border-green-500/30">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            Verified
+          </Badge>
+        );
+      case "rejected":
+        return (
+          <Badge className="bg-red-500/20 text-red-600 border-red-500/30">
+            <XCircle className="w-3 h-3 mr-1" />
+            Rejected
+          </Badge>
+        );
+      default:
+        return (
+          <Badge className="bg-amber-500/20 text-amber-600 border-amber-500/30">
+            <Wallet className="w-3 h-3 mr-1" />
+            Pending
+          </Badge>
+        );
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -113,6 +237,30 @@ const MyBookings = () => {
       month: "short",
       year: "numeric",
     });
+  };
+
+  // Determine if user can upload remaining payment
+  const canUploadRemainingPayment = (booking: Booking) => {
+    // User can upload if:
+    // 1. Booking is confirmed with advance_verified
+    // 2. remaining_payment_status is 'pending' OR 'rejected'
+    // 3. There's a balance to pay
+    const hasBalance = booking.total_amount > booking.advance_paid;
+    const isConfirmed = booking.booking_status === "confirmed";
+    const advanceVerified = ["advance_verified", "partial"].includes(booking.payment_status);
+    const canUpload = booking.remaining_payment_status === "pending" || booking.remaining_payment_status === "rejected";
+    
+    return hasBalance && isConfirmed && advanceVerified && canUpload;
+  };
+
+  // Check if remaining payment is pending verification
+  const isRemainingPaymentPendingVerification = (booking: Booking) => {
+    return booking.remaining_payment_status === "uploaded";
+  };
+
+  // Check if fully paid
+  const isFullyPaid = (booking: Booking) => {
+    return booking.payment_status === "fully_paid" || booking.remaining_payment_status === "verified";
   };
 
   if (loading || loadingBookings) {
@@ -130,9 +278,15 @@ const MyBookings = () => {
       <main className="pt-24 pb-16 px-4">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="font-serif text-3xl font-bold text-foreground">My Bookings</h1>
-            <p className="text-muted-foreground mt-2">Track your trip bookings and their status</p>
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="font-serif text-3xl font-bold text-foreground">My Bookings</h1>
+              <p className="text-muted-foreground mt-2">Track your trip bookings and their status</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={fetchBookings}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
           </div>
 
           {/* Bookings List */}
@@ -155,9 +309,7 @@ const MyBookings = () => {
           ) : (
             <div className="space-y-4">
               {bookings.map((booking) => {
-                const advancePaid = booking.advance_amount || ADVANCE_AMOUNT * booking.num_travelers;
-                const balanceAmount = booking.remaining_amount ?? Math.max(0, booking.amount - advancePaid);
-                const paymentStatus = getPaymentStatus(booking);
+                const balanceAmount = Math.max(0, booking.total_amount - booking.advance_paid);
                 
                 return (
                   <div
@@ -170,14 +322,14 @@ const MyBookings = () => {
                         <div className="flex-1">
                           <div className="flex items-start justify-between mb-2">
                             <h3 className="font-serif text-lg font-bold text-foreground">
-                              {booking.trip_name}
+                              {booking.trip_id}
                             </h3>
-                            {getStatusBadge(booking.status)}
+                            {getStatusBadge(booking.booking_status)}
                           </div>
                           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <MapPin className="w-4 h-4" />
-                              {booking.pickup_location}
+                              {booking.pickup_location || "Not specified"}
                             </span>
                             <span className="flex items-center gap-1">
                               <Users className="w-4 h-4" />
@@ -200,27 +352,55 @@ const MyBookings = () => {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                           <div>
                             <p className="text-muted-foreground">Total Trip Price</p>
-                            <p className="font-bold text-foreground">₹{booking.amount.toLocaleString()}</p>
+                            <p className="font-bold text-foreground">₹{booking.total_amount.toLocaleString()}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Advance Paid</p>
-                            <p className="font-bold text-green-600">₹{advancePaid.toLocaleString()}</p>
+                            <p className="font-bold text-green-600">₹{booking.advance_paid.toLocaleString()}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Remaining Balance</p>
-                            <p className={`font-bold ${balanceAmount > 0 ? 'text-amber-600' : 'text-green-600'}`}>
-                              ₹{balanceAmount.toLocaleString()}
+                            <p className={`font-bold ${isFullyPaid(booking) ? 'text-green-600' : 'text-amber-600'}`}>
+                              {isFullyPaid(booking) ? "₹0" : `₹${balanceAmount.toLocaleString()}`}
                             </p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Payment Status</p>
-                            <Badge className={getPaymentStatusColor(paymentStatus)}>
+                            <Badge className={getPaymentStatusColor(booking.payment_status)}>
                               <Wallet className="w-3 h-3 mr-1" />
-                              {paymentStatus}
+                              {getPaymentStatusLabel(booking.payment_status)}
                             </Badge>
                           </div>
                         </div>
                       </div>
+
+                      {/* Remaining Payment Status (for users who have initiated balance payment) */}
+                      {booking.remaining_payment_status && booking.remaining_payment_status !== "pending" && balanceAmount > 0 && (
+                        <div className="bg-muted/50 rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm text-muted-foreground">Remaining Payment Status</p>
+                              {getRemainingPaymentStatusBadge(booking.remaining_payment_status)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pay Remaining Balance Button - Only show when status is pending or rejected */}
+                      {canUploadRemainingPayment(booking) && (
+                        <div className="flex justify-center">
+                          <Button 
+                            onClick={() => setShowPaymentModal(booking)}
+                            className="gap-2"
+                          >
+                            <Upload className="w-4 h-4" />
+                            {booking.remaining_payment_status === "rejected" 
+                              ? "Re-upload Payment Screenshot" 
+                              : `Pay Remaining Balance (₹${balanceAmount.toLocaleString()})`
+                            }
+                          </Button>
+                        </div>
+                      )}
 
                       {/* Actions */}
                       <div className="flex justify-end">
@@ -233,10 +413,53 @@ const MyBookings = () => {
                         </Link>
                       </div>
                       
-                      {booking.status === "pending" && (
+                      {/* Status Messages */}
+                      {booking.booking_status === "pending" && (
                         <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
                           <p className="text-sm text-yellow-700 dark:text-yellow-400">
                             Your payment is being verified. We'll confirm your booking shortly.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Remaining Payment Uploaded - Awaiting Verification */}
+                      {isRemainingPaymentPendingVerification(booking) && (
+                        <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20 flex items-center gap-2">
+                          <Clock className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <p className="text-sm text-blue-700 dark:text-blue-400">
+                            Remaining payment submitted. Awaiting admin verification.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Remaining Payment Rejected */}
+                      {booking.remaining_payment_status === "rejected" && (
+                        <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                                Payment verification failed
+                              </p>
+                              {booking.rejection_reason && (
+                                <p className="text-sm text-red-600 dark:text-red-300 mt-1">
+                                  Reason: {booking.rejection_reason}
+                                </p>
+                              )}
+                              <p className="text-sm text-red-600 dark:text-red-300 mt-1">
+                                Please re-upload the correct payment proof.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Fully Paid Success Message */}
+                      {isFullyPaid(booking) && (
+                        <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20 flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          <p className="text-sm text-green-700 dark:text-green-400">
+                            Your full payment has been verified successfully. Have a great trip!
                           </p>
                         </div>
                       )}
@@ -248,6 +471,128 @@ const MyBookings = () => {
           )}
         </div>
       </main>
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-foreground/60 backdrop-blur-sm"
+            onClick={() => {
+              setShowPaymentModal(null);
+              setScreenshotFile(null);
+              setScreenshotPreview(null);
+            }}
+          />
+          <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-border">
+              <h2 className="font-serif text-xl font-bold text-card-foreground">
+                {showPaymentModal.remaining_payment_status === "rejected" 
+                  ? "Re-upload Payment Screenshot" 
+                  : "Pay Remaining Balance"
+                }
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                ₹{(showPaymentModal.total_amount - showPaymentModal.advance_paid).toLocaleString()} for {showPaymentModal.trip_id}
+              </p>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Rejection reason if resubmitting */}
+              {showPaymentModal.remaining_payment_status === "rejected" && showPaymentModal.rejection_reason && (
+                <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                  <p className="text-sm font-medium text-red-700 dark:text-red-400">Previous rejection reason:</p>
+                  <p className="text-sm text-red-600 dark:text-red-300">{showPaymentModal.rejection_reason}</p>
+                </div>
+              )}
+
+              {/* UPI QR Code */}
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-4">Scan QR code to pay via UPI</p>
+                <div className="inline-block p-4 bg-white rounded-xl">
+                  <QRCodeSVG 
+                    value={generateUpiQrString({
+                      amount: showPaymentModal.total_amount - showPaymentModal.advance_paid,
+                      transactionNote: `${showPaymentModal.trip_id} - ${showPaymentModal.full_name} - Balance`
+                    })}
+                    size={180}
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground mt-3">
+                  UPI ID: <span className="font-mono font-medium text-foreground">{getMerchantUpiId()}</span>
+                </p>
+                <p className="text-lg font-bold text-primary mt-2">
+                  ₹{(showPaymentModal.total_amount - showPaymentModal.advance_paid).toLocaleString()}
+                </p>
+              </div>
+
+              {/* Screenshot Upload */}
+              <div>
+                <p className="text-sm font-medium text-foreground mb-2">Upload Payment Screenshot</p>
+                <label className="block cursor-pointer">
+                  <div className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                    screenshotPreview ? 'border-primary bg-primary/5' : 'border-border hover:border-primary'
+                  }`}>
+                    {screenshotPreview ? (
+                      <div className="space-y-2">
+                        <img 
+                          src={screenshotPreview} 
+                          alt="Payment Screenshot" 
+                          className="max-h-40 mx-auto rounded-lg"
+                        />
+                        <p className="text-sm text-primary">Click to change</p>
+                      </div>
+                    ) : (
+                      <div className="py-4">
+                        <Image className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Click to upload screenshot</p>
+                        <p className="text-xs text-muted-foreground mt-1">Max size: 5MB</p>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Submit Button */}
+              <Button
+                onClick={() => uploadRemainingScreenshot(showPaymentModal.id)}
+                disabled={!screenshotFile || uploadingId === showPaymentModal.id}
+                className="w-full"
+              >
+                {uploadingId === showPaymentModal.id ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Submit Payment Proof
+                  </>
+                )}
+              </Button>
+
+              {/* Cancel Button */}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPaymentModal(null);
+                  setScreenshotFile(null);
+                  setScreenshotPreview(null);
+                }}
+                className="w-full"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
@@ -18,110 +18,124 @@ export type Database = {
         Row: {
           batch_name: string
           batch_size: number
-          created_at: string
+          created_at: string | null
           end_date: string
           id: string
           seats_booked: number
           start_date: string
           status: string
           trip_id: string
-          updated_at: string
+          updated_at: string | null
         }
         Insert: {
           batch_name: string
           batch_size?: number
-          created_at?: string
+          created_at?: string | null
           end_date: string
           id?: string
           seats_booked?: number
           start_date: string
           status?: string
           trip_id: string
-          updated_at?: string
+          updated_at?: string | null
         }
         Update: {
           batch_name?: string
           batch_size?: number
-          created_at?: string
+          created_at?: string | null
           end_date?: string
           id?: string
           seats_booked?: number
           start_date?: string
           status?: string
           trip_id?: string
-          updated_at?: string
+          updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "batches_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["trip_id"]
+          },
+        ]
       }
       bookings: {
         Row: {
-          admin_notes: string | null
-          advance_amount: number | null
-          amount: number
+          advance_paid: number
+          advance_screenshot_url: string | null
           batch_id: string | null
+          booking_status: string
           created_at: string | null
           email: string
           full_name: string
           id: string
+          notes: string | null
           num_travelers: number
-          payment_screenshot_url: string | null
-          payment_status: string | null
+          payment_status: string
           phone: string
-          pickup_location: string
-          remaining_amount: number | null
-          status: string
-          travel_date: string | null
+          pickup_location: string | null
+          rejection_reason: string | null
+          remaining_payment_status: string | null
+          remaining_payment_uploaded_at: string | null
+          remaining_payment_verified_at: string | null
+          remaining_screenshot_url: string | null
+          total_amount: number
           trip_id: string
-          trip_name: string
           updated_at: string | null
-          upi_transaction_id: string | null
-          user_id: string
+          user_id: string | null
+          verified_by_admin_id: string | null
         }
         Insert: {
-          admin_notes?: string | null
-          advance_amount?: number | null
-          amount: number
+          advance_paid?: number
+          advance_screenshot_url?: string | null
           batch_id?: string | null
+          booking_status?: string
           created_at?: string | null
           email: string
           full_name: string
           id?: string
+          notes?: string | null
           num_travelers?: number
-          payment_screenshot_url?: string | null
-          payment_status?: string | null
+          payment_status?: string
           phone: string
-          pickup_location: string
-          remaining_amount?: number | null
-          status?: string
-          travel_date?: string | null
+          pickup_location?: string | null
+          rejection_reason?: string | null
+          remaining_payment_status?: string | null
+          remaining_payment_uploaded_at?: string | null
+          remaining_payment_verified_at?: string | null
+          remaining_screenshot_url?: string | null
+          total_amount: number
           trip_id: string
-          trip_name: string
           updated_at?: string | null
-          upi_transaction_id?: string | null
-          user_id: string
+          user_id?: string | null
+          verified_by_admin_id?: string | null
         }
         Update: {
-          admin_notes?: string | null
-          advance_amount?: number | null
-          amount?: number
+          advance_paid?: number
+          advance_screenshot_url?: string | null
           batch_id?: string | null
+          booking_status?: string
           created_at?: string | null
           email?: string
           full_name?: string
           id?: string
+          notes?: string | null
           num_travelers?: number
-          payment_screenshot_url?: string | null
-          payment_status?: string | null
+          payment_status?: string
           phone?: string
-          pickup_location?: string
-          remaining_amount?: number | null
-          status?: string
-          travel_date?: string | null
+          pickup_location?: string | null
+          rejection_reason?: string | null
+          remaining_payment_status?: string | null
+          remaining_payment_uploaded_at?: string | null
+          remaining_payment_verified_at?: string | null
+          remaining_screenshot_url?: string | null
+          total_amount?: number
           trip_id?: string
-          trip_name?: string
           updated_at?: string | null
-          upi_transaction_id?: string | null
-          user_id?: string
+          user_id?: string | null
+          verified_by_admin_id?: string | null
         }
         Relationships: [
           {
@@ -135,45 +149,36 @@ export type Database = {
       }
       interested_users: {
         Row: {
-          admin_notes: string | null
           created_at: string | null
+          email: string
+          full_name: string
           id: string
-          mobile: string
-          name: string
-          preferred_date: string
-          status: string
-          submitted_at: string
+          message: string | null
+          phone: string
+          preferred_month: string | null
           trip_id: string
-          trip_name: string
-          updated_at: string | null
           user_id: string | null
         }
         Insert: {
-          admin_notes?: string | null
           created_at?: string | null
+          email: string
+          full_name: string
           id?: string
-          mobile: string
-          name: string
-          preferred_date: string
-          status?: string
-          submitted_at?: string
+          message?: string | null
+          phone: string
+          preferred_month?: string | null
           trip_id: string
-          trip_name: string
-          updated_at?: string | null
           user_id?: string | null
         }
         Update: {
-          admin_notes?: string | null
           created_at?: string | null
+          email?: string
+          full_name?: string
           id?: string
-          mobile?: string
-          name?: string
-          preferred_date?: string
-          status?: string
-          submitted_at?: string
+          message?: string | null
+          phone?: string
+          preferred_month?: string | null
           trip_id?: string
-          trip_name?: string
-          updated_at?: string | null
           user_id?: string | null
         }
         Relationships: []
@@ -181,39 +186,30 @@ export type Database = {
       payments: {
         Row: {
           amount: number
-          booking_id: string
-          created_at: string
+          booking_id: string | null
+          created_at: string | null
           id: string
-          payment_type: string
-          screenshot_url: string | null
+          payment_method: string
           status: string
-          updated_at: string
-          verified_at: string | null
-          verified_by: string | null
+          transaction_id: string | null
         }
         Insert: {
           amount: number
-          booking_id: string
-          created_at?: string
+          booking_id?: string | null
+          created_at?: string | null
           id?: string
-          payment_type?: string
-          screenshot_url?: string | null
+          payment_method?: string
           status?: string
-          updated_at?: string
-          verified_at?: string | null
-          verified_by?: string | null
+          transaction_id?: string | null
         }
         Update: {
           amount?: number
-          booking_id?: string
-          created_at?: string
+          booking_id?: string | null
+          created_at?: string | null
           id?: string
-          payment_type?: string
-          screenshot_url?: string | null
+          payment_method?: string
           status?: string
-          updated_at?: string
-          verified_at?: string | null
-          verified_by?: string | null
+          transaction_id?: string | null
         }
         Relationships: [
           {
@@ -227,6 +223,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           created_at: string | null
           email: string | null
           full_name: string | null
@@ -235,6 +232,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
@@ -243,11 +241,87 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
           id?: string
           phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      trips: {
+        Row: {
+          advance_amount: number | null
+          booking_live: boolean | null
+          capacity: number | null
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string | null
+          duration: string
+          exclusions: string[] | null
+          highlights: string[] | null
+          id: string
+          images: string[] | null
+          inclusions: string[] | null
+          is_active: boolean | null
+          locations: string[] | null
+          notes: string | null
+          price_default: number
+          price_from_mumbai: number | null
+          price_from_pune: number | null
+          summary: string | null
+          trip_id: string
+          trip_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          advance_amount?: number | null
+          booking_live?: boolean | null
+          capacity?: number | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          duration: string
+          exclusions?: string[] | null
+          highlights?: string[] | null
+          id?: string
+          images?: string[] | null
+          inclusions?: string[] | null
+          is_active?: boolean | null
+          locations?: string[] | null
+          notes?: string | null
+          price_default?: number
+          price_from_mumbai?: number | null
+          price_from_pune?: number | null
+          summary?: string | null
+          trip_id: string
+          trip_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          advance_amount?: number | null
+          booking_live?: boolean | null
+          capacity?: number | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          duration?: string
+          exclusions?: string[] | null
+          highlights?: string[] | null
+          id?: string
+          images?: string[] | null
+          inclusions?: string[] | null
+          is_active?: boolean | null
+          locations?: string[] | null
+          notes?: string | null
+          price_default?: number
+          price_from_mumbai?: number | null
+          price_from_pune?: number | null
+          summary?: string | null
+          trip_id?: string
+          trip_name?: string
           updated_at?: string | null
         }
         Relationships: []
@@ -260,7 +334,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
@@ -281,6 +355,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_seats_booked: {
+        Args: { batch_id_param: string; seats_count: number }
+        Returns: undefined
       }
     }
     Enums: {

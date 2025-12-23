@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { trips as staticTrips, Trip, getBookableTrips as staticGetBookableTrips, getUpcomingTrips as staticGetUpcomingTrips } from '@/data/trips';
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { trips as staticTrips, Trip } from "@/data/trips";
 
 export interface DatabaseTrip {
   id: string;
@@ -36,41 +36,29 @@ interface Batch {
   batch_name: string;
 }
 
-// Trip booking status stored in localStorage as fallback (until DB table is created)
-const BOOKING_LIVE_KEY = 'gobhraman_booking_live';
+interface TripDbRecord {
+  trip_id: string;
+  booking_live: boolean;
+}
 
-const getBookingLiveStatus = (): Record<string, boolean> => {
-  try {
-    const stored = localStorage.getItem(BOOKING_LIVE_KEY);
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    return {};
-  }
-};
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-const setBookingLiveStatus = (tripId: string, status: boolean) => {
-  const current = getBookingLiveStatus();
-  current[tripId] = status;
-  localStorage.setItem(BOOKING_LIVE_KEY, JSON.stringify(current));
-};
-
-// Convert static trip to database format
-const convertStaticToDbTrip = (trip: Trip): DatabaseTrip => {
-  const bookingStatus = getBookingLiveStatus();
+const convertStaticToDbTrip = (trip: Trip, bookingLive: boolean = false): DatabaseTrip => {
   return {
     id: trip.tripId,
     trip_id: trip.tripId,
     trip_name: trip.tripName,
-    price_default: typeof trip.price === 'number' ? trip.price : trip.price.default,
-    price_from_pune: typeof trip.price === 'object' ? (trip.price.fromPune || null) : null,
-    price_from_mumbai: typeof trip.price === 'object' ? (trip.price.fromMumbai || null) : null,
+    price_default: typeof trip.price === "number" ? trip.price : trip.price.default,
+    price_from_pune: typeof trip.price === "object" ? (trip.price.fromPune || null) : null,
+    price_from_mumbai: typeof trip.price === "object" ? (trip.price.fromMumbai || null) : null,
     duration: trip.duration,
     summary: trip.summary,
     highlights: trip.highlights || [],
     locations: trip.locations || [],
     images: trip.images,
     is_active: trip.isActive,
-    booking_live: bookingStatus[trip.tripId] ?? false,
+    booking_live: bookingLive,
     capacity: trip.capacity || 40,
     advance_amount: trip.booking?.advance || 2000,
     inclusions: trip.inclusions || [],
@@ -86,103 +74,232 @@ export const useTrips = () => {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tripsTableMissing, setTripsTableMissing] = useState(false);
 
-  const fetchTrips = async () => {
+  const fetchTrips = useCallback(async () => {
     try {
-      // Fetch batches from database
-      const { data: dbBatches, error: batchesError } = await supabase
-        .from('batches')
-        .select('*')
-        .order('start_date');
+      setLoading(true);
+      setError(null);
 
-      if (!batchesError && dbBatches) {
-        setBatches(dbBatches as Batch[]);
+      // Fetch batches from database (source of truth for availability)
+      const { data: dbBatches, error: batchesError } = await supabase
+        .from("batches")
+        .select("*")
+        .order("start_date");
+
+      if (batchesError) throw batchesError;
+      setBatches((dbBatches || []) as Batch[]);
+
+      // Try to fetch full trips from database first
+      let dbTrips: DatabaseTrip[] = [];
+      let bookingStatusMap: Record<string, boolean> = {};
+
+      if (SUPABASE_URL && SUPABASE_KEY) {
+        try {
+          const response = await fetch(`${SUPABASE_URL}/rest/v1/trips?select=*`, {
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+            },
+          });
+
+          if (response.ok) {
+            setTripsTableMissing(false);
+            const tripData = await response.json();
+            if (tripData && tripData.length > 0) {
+              dbTrips = tripData.map((t: any) => ({
+                id: t.id || t.trip_id,
+                trip_id: t.trip_id,
+                trip_name: t.trip_name,
+                price_default: t.price_default || 0,
+                price_from_pune: t.price_from_pune,
+                price_from_mumbai: t.price_from_mumbai,
+                duration: t.duration || "",
+                summary: t.summary || "",
+                highlights: t.highlights || [],
+                locations: t.locations || [],
+                images: t.images || [],
+                is_active: t.is_active ?? true,
+                booking_live: t.booking_live ?? false,
+                capacity: t.capacity || 30,
+                advance_amount: t.advance_amount || 2000,
+                inclusions: t.inclusions || [],
+                exclusions: t.exclusions || [],
+                contact_phone: t.contact_phone,
+                contact_email: t.contact_email,
+                notes: t.notes,
+              }));
+            }
+            tripData.forEach((t: any) => {
+              bookingStatusMap[t.trip_id] = !!t.booking_live;
+            });
+          } else {
+            setTripsTableMissing(true);
+          }
+        } catch {
+          setTripsTableMissing(true);
+        }
+      } else {
+        setTripsTableMissing(true);
       }
 
-      // Use static trips with booking_live from localStorage
-      setTrips(staticTrips.filter(t => t.isActive).map(convertStaticToDbTrip));
+      // Use DB trips if available, otherwise fall back to static
+      if (dbTrips.length > 0) {
+        setTrips(dbTrips);
+      } else {
+        const convertedTrips = staticTrips
+          .filter((t) => t.isActive)
+          .map((trip) => convertStaticToDbTrip(trip, bookingStatusMap[trip.tripId] ?? false));
+        setTrips(convertedTrips);
+      }
     } catch (err: any) {
-      setTrips(staticTrips.filter(t => t.isActive).map(convertStaticToDbTrip));
-      setError(err.message);
-      console.error('Error fetching trips:', err);
+      setTrips(staticTrips.filter((t) => t.isActive).map((t) => convertStaticToDbTrip(t, false)));
+      setError(err?.message || "Failed to load trips");
+      console.error("Error fetching trips:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchTrips();
+  }, [fetchTrips]);
+
+  const seatsRemaining = useCallback((batch: Batch) => {
+    return Math.max(0, batch.batch_size - batch.seats_booked);
   }, []);
 
-  // Check if a trip is bookable (booking_live + has active batch with seats)
-  const isTripBookable = (tripId: string): boolean => {
-    const trip = trips.find(t => t.trip_id === tripId);
-    if (!trip) return false;
-    
-    // booking_live must be true AND must have active batch with seats
-    if (!trip.booking_live) return false;
+  // FINAL bookable logic:
+  // booking_live === true AND at least one active batch exists AND batch has seats_remaining > 0
+  const isTripBookable = useCallback(
+    (tripId: string): boolean => {
+      const trip = trips.find((t) => t.trip_id === tripId);
+      if (!trip?.booking_live) return false;
 
-    const tripBatches = batches.filter(b => b.trip_id === tripId && b.status === 'active');
-    return tripBatches.some(b => b.batch_size - b.seats_booked > 0);
+      const tripBatches = batches.filter((b) => b.trip_id === tripId && b.status === "active");
+      if (tripBatches.length === 0) return false;
+
+      return tripBatches.some((b) => seatsRemaining(b) > 0);
+    },
+    [trips, batches, seatsRemaining]
+  );
+
+  const toggleBookingLive = async (tripId: string, status: boolean): Promise<boolean> => {
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      setTripsTableMissing(true);
+      return false;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authHeader = session?.access_token ? `Bearer ${session.access_token}` : `Bearer ${SUPABASE_KEY}`;
+
+      // Check if record exists
+      const checkResponse = await fetch(`${SUPABASE_URL}/rest/v1/trips?trip_id=eq.${tripId}&select=trip_id`, {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: authHeader,
+        },
+      });
+
+      if (!checkResponse.ok) {
+        setTripsTableMissing(true);
+        return false;
+      }
+
+      const existingRows: Array<{ trip_id: string }> = await checkResponse.json();
+
+      if (existingRows.length > 0) {
+        const updateResponse = await fetch(`${SUPABASE_URL}/rest/v1/trips?trip_id=eq.${tripId}`, {
+          method: "PATCH",
+          headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: authHeader,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({ booking_live: status }),
+        });
+
+        if (!updateResponse.ok) throw new Error("Failed to update trip booking status");
+      } else {
+        const insertResponse = await fetch(`${SUPABASE_URL}/rest/v1/trips`, {
+          method: "POST",
+          headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: authHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ trip_id: tripId, booking_live: status }),
+        });
+
+        if (!insertResponse.ok) throw new Error("Failed to create trip booking status");
+      }
+
+      await fetchTrips();
+      return true;
+    } catch (err) {
+      console.error("Error toggling booking live:", err);
+      setTripsTableMissing(true);
+      return false;
+    }
   };
 
-  // Toggle booking live status
-  const toggleBookingLive = (tripId: string, status: boolean) => {
-    setBookingLiveStatus(tripId, status);
-    // Refresh trips to reflect the change
-    setTrips(staticTrips.filter(t => t.isActive).map(convertStaticToDbTrip));
-  };
+  const getBookableTrips = useCallback((): DatabaseTrip[] => {
+    return trips.filter((trip) => isTripBookable(trip.trip_id));
+  }, [trips, isTripBookable]);
 
-  // Get bookable trips
-  const getBookableTrips = (): DatabaseTrip[] => {
-    return trips.filter(trip => isTripBookable(trip.trip_id));
-  };
+  const getUpcomingTrips = useCallback((): DatabaseTrip[] => {
+    return trips.filter((trip) => !isTripBookable(trip.trip_id));
+  }, [trips, isTripBookable]);
 
-  // Get upcoming trips (not bookable)
-  const getUpcomingTrips = (): DatabaseTrip[] => {
-    return trips.filter(trip => !isTripBookable(trip.trip_id));
-  };
+  const getTrip = useCallback(
+    (tripId: string): DatabaseTrip | undefined => {
+      return trips.find((t) => t.trip_id === tripId);
+    },
+    [trips]
+  );
 
-  // Get trip by ID
-  const getTrip = (tripId: string): DatabaseTrip | undefined => {
-    return trips.find(t => t.trip_id === tripId);
-  };
-
-  // Get trip price
   const getTripPrice = (trip: DatabaseTrip): number => {
     return trip.price_default;
   };
 
-  // Format price
   const formatPrice = (price: number): string => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
     }).format(price);
   };
 
-  // Get available batches for a trip
-  const getTripBatches = (tripId: string): Batch[] => {
-    return batches.filter(b => b.trip_id === tripId && b.status === 'active');
-  };
+  const getTripBatches = useCallback(
+    (tripId: string): Batch[] => {
+      return batches.filter((b) => b.trip_id === tripId && b.status === "active");
+    },
+    [batches]
+  );
 
-  // Check if trip has any batches
-  const hasBatches = (tripId: string): boolean => {
-    return batches.some(b => b.trip_id === tripId);
-  };
+  const hasBatches = useCallback(
+    (tripId: string): boolean => {
+      return batches.some((b) => b.trip_id === tripId && b.status === "active");
+    },
+    [batches]
+  );
 
-  // Get available seats for a trip
-  const getAvailableSeats = (tripId: string): number => {
-    const tripBatches = getTripBatches(tripId);
-    return tripBatches.reduce((total, b) => total + (b.batch_size - b.seats_booked), 0);
-  };
+  const getAvailableSeats = useCallback(
+    (tripId: string): number => {
+      const tripBatches = getTripBatches(tripId);
+      return tripBatches.reduce((total, b) => total + seatsRemaining(b), 0);
+    },
+    [getTripBatches, seatsRemaining]
+  );
 
   return {
     trips,
     batches,
     loading,
     error,
+    tripsTableMissing,
     isTripBookable,
     getBookableTrips,
     getUpcomingTrips,
@@ -193,8 +310,9 @@ export const useTrips = () => {
     hasBatches,
     getAvailableSeats,
     toggleBookingLive,
-    refetch: fetchTrips
+    refetch: fetchTrips,
   };
 };
 
 export default useTrips;
+
